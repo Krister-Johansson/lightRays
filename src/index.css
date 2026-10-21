@@ -76,6 +76,32 @@ body {
   }
 }
 
+/* Menu: copy rises in with a short stagger; the hero light breathes slowly. */
+.enter-rise {
+  transition:
+    opacity 300ms var(--ease-out-strong),
+    transform 300ms var(--ease-out-strong);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.hero-beam,
+.hero-fan {
+  animation: hero-breathe 4s ease-in-out infinite alternate;
+}
+.hero-fan {
+  animation-delay: -2s;
+}
+@keyframes hero-breathe {
+  from {
+    opacity: 0.82;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Finish button: muted while locked, lights up in the beam colour once unlocked. */
 .finish-button {
   border: 1px solid var(--color-line-strong);
@@ -144,6 +170,15 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hero-beam,
+  .hero-fan {
+    animation: none;
+  }
+  .enter-rise {
+    @starting-style {
+      transform: none;
+    }
+  }
   .help-popover {
     transform: none;
   }

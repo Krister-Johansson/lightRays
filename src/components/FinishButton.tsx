@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent } from 'react'
 
 type Props = {
   unlocked: boolean
-  isLast: boolean
+  label: string
   beam: string
   onFinish: () => void
 }
@@ -12,7 +12,7 @@ type Props = {
  * Locked until the beam's unlock pulse reaches the receiver, then lights up in the
  * beam colour with a one-off sweep of light. Enter finishes the round too.
  */
-export function FinishButton({ unlocked, isLast, beam, onFinish }: Props) {
+export function FinishButton({ unlocked, label, beam, onFinish }: Props) {
   const finishFromKeyboard = useEffectEvent(() => onFinish())
   useEffect(() => {
     if (!unlocked) return
@@ -34,7 +34,7 @@ export function FinishButton({ unlocked, isLast, beam, onFinish }: Props) {
     >
       {unlocked ? (
         <>
-          <span>{isLast ? 'Finish' : 'Finish round'}</span>
+          <span>{label}</span>
           <ArrowRight className="size-5" aria-hidden />
         </>
       ) : (

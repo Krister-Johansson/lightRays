@@ -4,43 +4,33 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { dashedCircle, dotGridTexture, ribbon } from './geometry'
-import { isSolved, MIRROR_HALF_LENGTH, trace } from './trace'
-import type { LevelDef, MirrorDef, TraceResult } from './types'
+import { BEAM_Y, buildPieceView, disposeObject, PALETTE, type PieceView, S } from './pieceMeshes'
+import { COLOR_HEX, PIECE_INFO, toBoard } from './pieces'
+import type { LevelDef, Piece, PieceType } from './schema'
+import { isSolved, receivers, trace } from './trace'
+import type { TraceResult } from './types'
 
-/** World units per board pixel. */
-const S = 0.01
 const DOT_CELL = 40
-
-const COLORS = {
-  background: '#0C0D0F',
-  frame: '#101214',
-  board: '#131518',
-  dot: '#262A2F',
-  wall: '#24272C',
-  wallEdge: '#33373D',
-  mirrorBack: '#2C3036',
-  mirrorFace: '#DDE1E6',
-  plate: '#16181B',
-  dial: '#4FA8FF',
-  amber: '#FFC940',
-  receiverDark: '#6B5A26',
-  receiverCore: '#2A2617',
-}
+const SNAP = 10
+const BACKGROUND = '#0C0D0F'
 
 // Dial radii in board pixels (from the approved design).
 const DIAL = { inner: 48, fine: 110, finest: 180, minArm: 60, maxArm: 240, defaultArm: 80 }
-
-const BEAM_Y = 0.07
 const DIAL_Y = 0.004
 
+export type GameMode = 'play' | 'edit'
+
 export type GameSnapshot = {
+  mode: GameMode
   level: LevelDef
-  angles: Record<string, number>
-  selected: string | null
+  pieces: Piece[]
+  /** Kit pieces still waiting in the tray (play mode). */
+  tray: Piece[]
+  selected: Piece | null
   dragging: boolean
-  lit: boolean
+  goals: { lit: number; total: number }
   solved: boolean
-  /** True once the unlock light has reached the receiver; the finish button opens then. */
+  /** True once the unlock light has reached the receivers; the finish button opens then. */
   unlocked: boolean
   mustHit: { hit: number; total: number }
   moves: number
@@ -59,14 +49,12 @@ const easeOut = (t: number) => 1 - Math.pow(1 - t, 4)
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-type MirrorView = {
-  def: MirrorDef
-  root: THREE.Group
-  pivot: THREE.Group
-  hit: THREE.Mesh
-  base?: THREE.Mesh
-  mustRing?: THREE.Mesh
-}
+type Drag =
+  | { kind: 'rotate'; id: string; startAngle: number }
+  | { kind: 'move'; id: string; dx: number; dy: number; startX: number; startY: number; moved: boolean; fromTray: boolean }
+  | { kind: 'resize'; id: string; hx: -1 | 0 | 1; hy: -1 | 0 | 1; anchor: { x: number; y: number } }
+
+type ViewEntry = { view: PieceView; key: string }
 
 export class Game {
   private renderer: THREE.WebGLRenderer
@@ -80,13 +68,17 @@ export class Game {
   private frame = 0
   private animating = false
   private listeners = new Set<() => void>()
+  private container: HTMLElement
+  /** Screen space kept free above and below the board for HUD bars, in CSS px. */
+  private insets = { top: 84, bottom: 112 }
 
-  private level!: LevelDef
-  private levelGroup = new THREE.Group()
+  private boardGroup = new THREE.Group()
+  private pieceGroup = new THREE.Group()
   private beamGroup = new THREE.Group()
+  private cometGroup = new THREE.Group()
   private dialGroup = new THREE.Group()
-  private mirrors = new Map<string, MirrorView>()
-  private receiver!: { ring: THREE.MeshBasicMaterial; core: THREE.MeshBasicMaterial; halo: THREE.Mesh; pulse: THREE.Mesh }
+  private handleGroup = new THREE.Group()
+  private views = new Map<string, ViewEntry>()
   private dialParts!: {
     arm: THREE.Mesh
     refDot: THREE.Mesh
@@ -95,39 +87,36 @@ export class Game {
     materials: THREE.MeshBasicMaterial[]
   }
 
-  private angles: Record<string, number> = {}
+  private mode: GameMode = 'play'
+  private level!: LevelDef
+  private pieces: Piece[] = []
+  private tray: Piece[] = []
   private arms: Record<string, number> = {}
   private selected: string | null = null
-  private dragging = false
-  private dragStartAngle = 0
+  private hovered: string | null = null
+  private drag: Drag | null = null
   private shift = false
   private moves = 0
   private result!: TraceResult
   private snapshot!: GameSnapshot
 
   // Animated values, eased toward their targets each frame.
-  private litAmount = 0
+  private litAmount = new Map<string, number>()
+  private pulses = new Map<string, number>()
   private dialAppear = 0
   private dialTarget = 0
-  private pulseT = 1
-  private wasLit = false
-  // Unlock sequence: a bright pulse races down the solved beam, then the receiver bursts.
+  // Unlock sequence: light races down every beam at constant speed, receivers burst on arrival.
   private solved = false
   private unlocked = false
   /** Seconds into the unlock sequence; Infinity when it isn't playing. */
   private unlockT = Infinity
   private surge = 0
-  private beamPath: { pts: THREE.Vector2[]; lengths: number[]; total: number } = { pts: [], lengths: [], total: 0 }
-  private cometGroup = new THREE.Group()
-  private burst!: THREE.Mesh
-
-  private container: HTMLElement
 
   constructor(container: HTMLElement) {
     this.container = container
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    this.renderer.setClearColor(COLORS.background)
+    this.renderer.setClearColor(BACKGROUND)
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.domElement.style.display = 'block'
@@ -141,21 +130,18 @@ export class Game {
     this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())
 
-    this.scene.background = new THREE.Color(COLORS.background)
+    this.scene.background = new THREE.Color(BACKGROUND)
     this.scene.add(new THREE.HemisphereLight('#c9d4e3', '#0b0c0e', 0.6))
     const sun = new THREE.DirectionalLight('#ffffff', 0.9)
     sun.position.set(-4, 9, 3)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
-    sun.shadow.camera.left = -8
-    sun.shadow.camera.right = 8
-    sun.shadow.camera.top = 6
-    sun.shadow.camera.bottom = -6
+    Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 6, bottom: -6 })
     sun.shadow.radius = 4
     sun.shadow.bias = -0.0005
     this.scene.add(sun)
 
-    this.scene.add(this.levelGroup, this.beamGroup, this.cometGroup, this.dialGroup)
+    this.scene.add(this.boardGroup, this.pieceGroup, this.beamGroup, this.cometGroup, this.dialGroup, this.handleGroup)
     this.buildDial()
 
     const el = this.renderer.domElement
@@ -180,86 +166,156 @@ export class Game {
 
   getSnapshot = () => this.snapshot
 
-  load(level: LevelDef) {
+  load(level: LevelDef, mode: GameMode) {
+    const sameBoard = this.level && this.level.width === level.width && this.level.height === level.height
     this.level = level
-    this.angles = Object.fromEntries(level.mirrors.map((m) => [m.id, m.angle]))
-    this.arms = Object.fromEntries(level.mirrors.map((m) => [m.id, DIAL.defaultArm]))
+    this.mode = mode
+    this.pieces = level.pieces.filter((p) => mode === 'edit' || p.lock !== 'kit').map((p) => ({ ...p }))
+    this.tray = mode === 'play' ? level.pieces.filter((p) => p.lock === 'kit').map((p) => ({ ...p })) : []
+    this.arms = {}
     this.moves = 0
     this.selected = null
-    this.dragging = false
+    this.drag = null
     this.dialAppear = this.dialTarget = 0
-    this.litAmount = 0
-    this.wasLit = false
-    this.pulseT = 1
+    this.litAmount.clear()
+    this.pulses.clear()
     this.solved = this.unlocked = false
     this.unlockT = Infinity
     this.surge = 0
-    this.buildLevel()
+    if (!sameBoard) this.buildBoard()
+    for (const { view } of this.views.values()) {
+      this.pieceGroup.remove(view.root)
+      disposeObject(view.root)
+    }
+    this.views.clear()
     this.update()
     this.resize()
   }
 
   reset() {
-    this.load(this.level)
+    this.load(this.level, this.mode)
+  }
+
+  setInsets(top: number, bottom: number) {
+    this.insets = { top, bottom }
+    this.resize()
+  }
+
+  /** The level as currently arranged on the board (edit mode saves this). */
+  currentLevel(): LevelDef {
+    return { ...this.level, pieces: [...this.pieces.map((p) => ({ ...p })), ...this.tray.map((p) => ({ ...p }))] }
   }
 
   select(id: string | null) {
-    const m = id ? this.mirrors.get(id) : null
-    const next = m && !m.def.fixed ? m.def.id : null
-    if (next === this.selected) return
-    this.selected = next
-    if (next) {
-      // Re-appear from slightly smaller each time a new piece is picked.
+    if (id === this.selected) return
+    this.selected = id
+    if (id && this.canRotate(this.piece(id)!)) {
       this.dialAppear = prefersReducedMotion() ? 1 : 0
       this.dialTarget = 1
     } else {
       this.dialTarget = 0
+      if (!id) this.dialAppear = Math.min(this.dialAppear, 1)
     }
     this.update()
   }
 
-  /** Rotates the selected mirror by `delta` degrees (keyboard control). */
+  /** Changes a piece's properties (edit mode inspector). */
+  updatePiece(id: string, patch: Partial<Piece>) {
+    this.pieces = this.pieces.map((p) => (p.id === id ? ({ ...p, ...patch } as Piece) : p))
+    this.update()
+  }
+
+  removePiece(id: string) {
+    this.pieces = this.pieces.filter((p) => p.id !== id)
+    if (this.selected === id) this.select(null)
+    this.update()
+  }
+
+  clear() {
+    this.pieces = []
+    this.selected = null
+    this.update()
+  }
+
+  /** Adds a new piece of `type` in the middle of the board (palette click). */
+  addPiece(type: PieceType) {
+    const piece = this.makePiece(type, this.level.width / 2, this.level.height / 2)
+    this.pieces.push(piece)
+    this.select(piece.id)
+    this.update()
+  }
+
+  /**
+   * Starts dragging a new piece (from the sandbox palette) or a kit piece (from the tray) onto
+   * the board. The pointer began outside the canvas, so this follows it at window level.
+   */
+  beginPlace(source: PieceType | string, e: PointerEvent) {
+    const fromTray = this.tray.find((p) => p.id === source)
+    let placed: Piece | null = null
+    let moved = false
+    const startX = e.clientX
+    const startY = e.clientY
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return
+      moved = true
+      const b = this.pointerToBoard(ev)
+      const inside = b && this.insideBoard(b.x, b.y)
+      if (inside && !placed) {
+        placed = fromTray ? { ...fromTray } : this.makePiece(source as PieceType, b.x, b.y)
+        if (fromTray) this.tray = this.tray.filter((p) => p.id !== fromTray.id)
+        this.pieces.push(placed)
+        this.selected = placed.id
+        this.dialTarget = 0
+      }
+      if (placed && b) {
+        const p = placed
+        this.pieces = this.pieces.map((q) => (q.id === p.id ? { ...q, x: this.snap(b.x), y: this.snap(b.y) } : q))
+        if (!inside) {
+          // Dragged back off the board: put it away again.
+          this.pieces = this.pieces.filter((q) => q.id !== p.id)
+          if (fromTray) this.tray.push(fromTray)
+          placed = null
+          this.selected = null
+        }
+        this.update()
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      if (!moved) {
+        if (fromTray) this.placeFromTray(fromTray.id)
+        else this.addPiece(source as PieceType)
+        return
+      }
+      if (placed) {
+        if (fromTray) this.moves++
+        const id = (placed as Piece).id
+        this.selected = null
+        this.select(id)
+      }
+      this.emit()
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  /** Rotates the selected piece by `delta` degrees (keyboard control). */
   nudge(delta: number) {
-    if (!this.selected) return
-    const id = this.selected
-    this.angles[id] = normalize(this.angles[id] + delta)
+    const p = this.selected ? this.piece(this.selected) : null
+    if (!p || !this.canRotate(p)) return
+    this.setPiece(p.id, { angle: normalize(p.angle + delta) })
     this.moves++
     this.update()
   }
 
   cycleSelection(dir: 1 | -1) {
-    const free = this.level.mirrors.filter((m) => !m.fixed)
+    const free = this.pieces.filter((p) => this.canRotate(p) || this.canMove(p))
     if (!free.length) return
-    const i = free.findIndex((m) => m.id === this.selected)
-    const next = free[(i + dir + free.length) % free.length]
-    this.select(next.id)
-  }
-
-  dispose() {
-    cancelAnimationFrame(this.frame)
-    this.resizeObserver.disconnect()
-    window.removeEventListener('keydown', this.onKeyDown)
-    window.removeEventListener('keyup', this.onKeyUp)
-    this.scene.traverse((o) => {
-      if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
-        o.geometry.dispose()
-        const mats = Array.isArray(o.material) ? o.material : [o.material]
-        mats.forEach((m: THREE.Material) => m.dispose())
-      }
-    })
-    this.composer.dispose()
-    this.renderer.dispose()
-    this.renderer.domElement.remove()
-  }
-
-  // ------------------------------------------------------------- coordinates
-
-  private toWorld(x: number, y: number, h = 0) {
-    return new THREE.Vector3((x - this.level.width / 2) * S, h, (y - this.level.height / 2) * S)
-  }
-
-  private toBoard(v: THREE.Vector3) {
-    return { x: v.x / S + this.level.width / 2, y: v.z / S + this.level.height / 2 }
+    const i = free.findIndex((p) => p.id === this.selected)
+    this.select(free[(i + dir + free.length) % free.length].id)
   }
 
   /** Board pixel → CSS pixel position inside the canvas. */
@@ -269,226 +325,156 @@ export class Game {
     return { x: ((v.x + 1) / 2) * r.width, y: ((1 - v.y) / 2) * r.height }
   }
 
-  private pointerRay(e: PointerEvent) {
+  dispose() {
+    cancelAnimationFrame(this.frame)
+    this.resizeObserver.disconnect()
+    window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('keyup', this.onKeyUp)
+    disposeObject(this.scene)
+    this.composer.dispose()
+    this.renderer.dispose()
+    this.renderer.domElement.remove()
+  }
+
+  // ------------------------------------------------------------- helpers
+
+  private piece(id: string) {
+    return this.pieces.find((p) => p.id === id)
+  }
+
+  private setPiece(id: string, patch: Partial<Piece>) {
+    this.pieces = this.pieces.map((p) => (p.id === id ? ({ ...p, ...patch } as Piece) : p))
+  }
+
+  private canRotate(p: Piece) {
+    if (!PIECE_INFO[p.type].rotatable) return false
+    return this.mode === 'edit' || p.lock !== 'fixed'
+  }
+
+  private canMove(p: Piece) {
+    return this.mode === 'edit' || p.lock === 'kit'
+  }
+
+  private snap(v: number) {
+    return Math.round(v / SNAP) * SNAP
+  }
+
+  private insideBoard(x: number, y: number) {
+    return x >= 0 && y >= 0 && x <= this.level.width && y <= this.level.height
+  }
+
+  private makePiece(type: PieceType, x: number, y: number): Piece {
+    let n = 1
+    const prefix = type.replace('double-mirror', 'dmirror')
+    while (this.pieces.some((p) => p.id === `${prefix}${n}`) || this.tray.some((p) => p.id === `${prefix}${n}`)) n++
+    const base = { id: `${prefix}${n}`, x: this.snap(x), y: this.snap(y), angle: type === 'mirror' || type === 'double-mirror' || type === 'splitter' ? 135 : 0, lock: 'rotate' as const }
+    switch (type) {
+      case 'laser':
+        return { ...base, type, color: 'yellow', lock: 'fixed' }
+      case 'prism':
+        return { ...base, type, size: 90 }
+      case 'glass':
+        return { ...base, type, w: 100, h: 60 }
+      case 'filter':
+        return { ...base, type, color: 'red' }
+      case 'receiver':
+        return { ...base, type, lock: 'fixed' }
+      case 'tube':
+        return { ...base, type, cone: 8, angle: 180, lock: 'fixed' }
+      case 'wall':
+        return { ...base, type, w: 60, h: 120, lock: 'fixed' }
+      default:
+        return { ...base, type } as Piece
+    }
+  }
+
+  private placeFromTray(id: string) {
+    const p = this.tray.find((q) => q.id === id)
+    if (!p) return
+    // Drop it at its own spot if free, else the board centre.
+    this.tray = this.tray.filter((q) => q.id !== id)
+    this.pieces.push({ ...p, x: this.snap(this.level.width / 2), y: this.snap(this.level.height / 2) })
+    this.moves++
+    this.select(id)
+    this.update()
+  }
+
+  // ------------------------------------------------------------- coordinates
+
+  private toWorld(x: number, y: number, h = 0) {
+    return new THREE.Vector3((x - this.level.width / 2) * S, h, (y - this.level.height / 2) * S)
+  }
+
+  private toBoardXY(v: THREE.Vector3) {
+    return { x: v.x / S + this.level.width / 2, y: v.z / S + this.level.height / 2 }
+  }
+
+  private pointerRay(e: { clientX: number; clientY: number }) {
     const r = this.renderer.domElement.getBoundingClientRect()
     const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
     this.raycaster.setFromCamera(ndc, this.camera)
     return this.raycaster
   }
 
+  private pointerToBoard(e: { clientX: number; clientY: number }) {
+    const hit = new THREE.Vector3()
+    if (!this.pointerRay(e).ray.intersectPlane(this.boardPlane, hit)) return null
+    return this.toBoardXY(hit)
+  }
+
   // ------------------------------------------------------------------ build
 
-  private buildLevel() {
-    disposeChildren(this.levelGroup)
-    this.mirrors.clear()
+  private buildBoard() {
+    disposeObject(this.boardGroup)
+    this.boardGroup.clear()
     const { width: W, height: H } = this.level
-
-    // Recessed frame and matte dotted board.
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry((W + 24) * S, 0.12, (H + 24) * S),
-      new THREE.MeshStandardMaterial({ color: COLORS.frame, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: '#101214', roughness: 0.95 }),
     )
     frame.position.y = -0.065
     frame.receiveShadow = true
-    this.levelGroup.add(frame)
-
-    const tex = dotGridTexture(DOT_CELL, 1.3, COLORS.board, COLORS.dot)
+    const tex = dotGridTexture(DOT_CELL, 1.3, '#131518', '#262A2F')
     tex.repeat.set(W / DOT_CELL, H / DOT_CELL)
-    const board = new THREE.Mesh(
-      new THREE.PlaneGeometry(W * S, H * S),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0 }),
-    )
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(W * S, H * S), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }))
     board.rotation.x = -Math.PI / 2
     board.receiveShadow = true
-    this.levelGroup.add(board)
-
-    // Walls
-    const wallMat = new THREE.MeshStandardMaterial({ color: COLORS.wall, roughness: 0.8 })
-    const edgeMat = new THREE.LineBasicMaterial({ color: COLORS.wallEdge })
-    for (const w of this.level.walls) {
-      const geo = new THREE.BoxGeometry(w.w * S, 0.26, w.h * S)
-      const mesh = new THREE.Mesh(geo, wallMat)
-      mesh.position.copy(this.toWorld(w.x + w.w / 2, w.y + w.h / 2, 0.13))
-      mesh.castShadow = mesh.receiveShadow = true
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat)
-      mesh.add(edges)
-      this.levelGroup.add(mesh)
-    }
-
-    this.buildLaser()
-    this.buildReceiver()
-    for (const m of this.level.mirrors) this.buildMirror(m)
-    flatDoubleSided(this.levelGroup)
+    this.boardGroup.add(frame, board)
   }
 
-  private buildLaser() {
-    const { x, y, angle, color } = this.level.laser
-    const g = new THREE.Group()
-    g.position.copy(this.toWorld(x, y))
-    g.rotation.y = (angle * Math.PI) / 180
-
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(54 * S, 0.18, 44 * S),
-      new THREE.MeshStandardMaterial({ color: '#1B1E22', roughness: 0.6, metalness: 0.2 }),
-    )
-    body.position.set(-27 * S, 0.09, 0)
-    body.castShadow = true
-    const nozzle = new THREE.Mesh(
-      new THREE.BoxGeometry(10 * S, 0.1, 16 * S),
-      new THREE.MeshStandardMaterial({ color: '#3A3F46', roughness: 0.5, metalness: 0.4 }),
-    )
-    nozzle.position.set(0, BEAM_Y, 0)
-    const led = new THREE.Mesh(
-      new THREE.CircleGeometry(5 * S, 24),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3) }),
-    )
-    led.rotation.x = -Math.PI / 2
-    led.position.set(-40 * S, 0.181, 0)
-    g.add(body, nozzle, led)
-    this.levelGroup.add(g)
-  }
-
-  private buildReceiver() {
-    const { x, y, r } = this.level.receiver
-    const g = new THREE.Group()
-    g.position.copy(this.toWorld(x, y))
-
-    const housing = new THREE.Mesh(
-      new THREE.CylinderGeometry(r * S, r * S * 1.05, 0.16, 48),
-      new THREE.MeshStandardMaterial({ color: '#1B1E22', roughness: 0.6, metalness: 0.2 }),
-    )
-    housing.position.y = 0.08
-    housing.castShadow = true
-    const ringMat = new THREE.MeshBasicMaterial({ color: COLORS.receiverDark })
-    const ring = new THREE.Mesh(new THREE.RingGeometry((r - 4) * S, r * S, 48), ringMat)
-    ring.rotation.x = -Math.PI / 2
-    ring.position.y = 0.161
-    const coreMat = new THREE.MeshBasicMaterial({ color: COLORS.receiverCore })
-    const core = new THREE.Mesh(new THREE.CircleGeometry(9 * S, 32), coreMat)
-    core.rotation.x = -Math.PI / 2
-    core.position.y = 0.162
-
-    const halo = new THREE.Mesh(
-      new THREE.RingGeometry(r * S, (r + 18) * S, 48),
-      new THREE.MeshBasicMaterial({ color: this.level.laser.color, transparent: true, opacity: 0, depthWrite: false }),
-    )
-    halo.rotation.x = -Math.PI / 2
-    halo.position.y = 0.003
-    const pulse = new THREE.Mesh(
-      new THREE.RingGeometry(r * S, (r + 3) * S, 48),
-      new THREE.MeshBasicMaterial({ color: this.level.laser.color, transparent: true, opacity: 0, depthWrite: false }),
-    )
-    pulse.rotation.x = -Math.PI / 2
-    pulse.position.y = 0.163
-
-    const burst = new THREE.Mesh(
-      new THREE.RingGeometry(r * S, (r + 6) * S, 64),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(this.level.laser.color).multiplyScalar(2), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
-    )
-    burst.rotation.x = -Math.PI / 2
-    burst.position.y = 0.004
-    this.burst = burst
-
-    g.add(housing, ring, core, halo, pulse, burst)
-    this.levelGroup.add(g)
-    this.receiver = { ring: ringMat, core: coreMat, halo, pulse }
-  }
-
-  private buildMirror(def: MirrorDef) {
-    const root = new THREE.Group()
-    root.position.copy(this.toWorld(def.x, def.y))
-    const pivot = new THREE.Group()
-    root.add(pivot)
-
-    const len = MIRROR_HALF_LENGTH * 2 * S
-    const back = new THREE.Mesh(
-      new THREE.BoxGeometry(6 * S, 0.15, len),
-      new THREE.MeshStandardMaterial({ color: COLORS.mirrorBack, roughness: 0.5, metalness: 0.3 }),
-    )
-    back.position.set(-4 * S, 0.075, 0)
-    back.castShadow = true
-    const face = new THREE.Mesh(
-      new THREE.BoxGeometry(3 * S, 0.15, len),
-      new THREE.MeshStandardMaterial({ color: COLORS.mirrorFace, roughness: 0.25, metalness: 0.6, emissive: '#9aa0a8', emissiveIntensity: 0.55 }),
-    )
-    face.position.set(0, 0.075, 0)
-    face.castShadow = true
-    pivot.add(back, face)
-
-    let base: THREE.Mesh | undefined
-    if (def.fixed) {
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(72 * S, 0.02, 72 * S),
-        new THREE.MeshStandardMaterial({ color: COLORS.plate, roughness: 0.7 }),
-      )
-      plate.position.y = 0.01
-      plate.receiveShadow = true
-      root.add(plate)
-      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const screw = new THREE.Mesh(
-          new THREE.CylinderGeometry(2.5 * S, 2.5 * S, 0.01, 12),
-          new THREE.MeshStandardMaterial({ color: '#3A3F46', metalness: 0.6, roughness: 0.4 }),
-        )
-        screw.position.set(sx * 27 * S, 0.025, sz * 27 * S)
-        root.add(screw)
-      }
-    } else {
-      base = new THREE.Mesh(
-        new THREE.RingGeometry(30 * S, 32 * S, 64),
-        new THREE.MeshBasicMaterial({ color: COLORS.dial, transparent: true, opacity: 0, depthWrite: false }),
-      )
-      base.rotation.x = -Math.PI / 2
-      base.position.y = 0.003
-      root.add(base)
-    }
-
-    let mustRing: THREE.Mesh | undefined
-    if (def.mustHit) {
-      const d = 44 * S
-      const pts = [
-        [0, -d], [d, 0], [0, d], [-d, 0], [0, -d],
-      ].map(([a, b]) => new THREE.Vector2(a, b))
-      // Dashes are drawn by splitting each edge into short pieces.
-      const dashes: THREE.Vector2[] = []
-      for (let i = 0; i < 4; i++) {
-        const a = pts[i]
-        const b = pts[i + 1]
-        const n = 6
-        for (let k = 0; k < n; k++) {
-          dashes.push(a.clone().lerp(b, k / n), a.clone().lerp(b, (k + 0.5) / n))
+  /** Creates, rebuilds or moves each piece's 3D view to match state. */
+  private syncViews() {
+    const seen = new Set<string>()
+    for (const p of this.pieces) {
+      seen.add(p.id)
+      const { x: _x, y: _y, angle: _a, ...shape } = p
+      const key = JSON.stringify(shape)
+      let entry = this.views.get(p.id)
+      if (!entry || entry.key !== key) {
+        if (entry) {
+          this.pieceGroup.remove(entry.view.root)
+          disposeObject(entry.view.root)
         }
+        entry = { view: buildPieceView(p), key }
+        this.views.set(p.id, entry)
+        this.pieceGroup.add(entry.view.root)
       }
-      mustRing = new THREE.Mesh(
-        ribbon(dashes, 1.6 * S, { pairs: true }),
-        new THREE.MeshBasicMaterial({ color: COLORS.amber, transparent: true, opacity: 0.7, depthWrite: false }),
-      )
-      mustRing.position.y = 0.003
-      mustRing.userData.solid = new THREE.Mesh(
-        ribbon(pts, 1.6 * S, { joints: true }),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.amber).multiplyScalar(1.4), transparent: true, opacity: 0, depthWrite: false }),
-      )
-      ;(mustRing.userData.solid as THREE.Mesh).position.y = 0.0035
-      root.add(mustRing, mustRing.userData.solid as THREE.Mesh)
+      entry.view.root.position.copy(this.toWorld(p.x, p.y))
+      entry.view.pivot.rotation.y = (p.angle * Math.PI) / 180
     }
-
-    // Invisible pick target, a bit larger than the mirror for comfortable taps.
-    const hit = new THREE.Mesh(
-      new THREE.CylinderGeometry(34 * S, 34 * S, 0.2, 24),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
-    )
-    hit.position.y = 0.1
-    hit.userData.mirrorId = def.id
-    root.add(hit)
-
-    this.levelGroup.add(root)
-    this.mirrors.set(def.id, { def, root, pivot, hit, base, mustRing })
+    for (const [id, entry] of this.views) {
+      if (seen.has(id)) continue
+      this.pieceGroup.remove(entry.view.root)
+      disposeObject(entry.view.root)
+      this.views.delete(id)
+    }
   }
 
   private buildDial() {
     const mat = (opacity: number) =>
-      new THREE.MeshBasicMaterial({ color: COLORS.dial, transparent: true, opacity, depthWrite: false })
-    const guideMat = new THREE.MeshBasicMaterial({ color: '#3a4049', transparent: true, opacity: 1, depthWrite: false })
-    const fillMat = new THREE.MeshBasicMaterial({ color: '#0C0D0F', transparent: true, opacity: 0.35, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: PALETTE.dial, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide })
+    const guideMat = new THREE.MeshBasicMaterial({ color: '#3a4049', transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide })
+    const fillMat = new THREE.MeshBasicMaterial({ color: BACKGROUND, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
 
     const fill = new THREE.Mesh(new THREE.CircleGeometry(DIAL.inner * S, 64), fillMat)
     const innerMat = mat(0.55)
@@ -502,8 +488,7 @@ export class Game {
       const r = (d * Math.PI) / 180
       const isMajor = d % 45 === 0
       const out = isMajor ? 60 : 54
-      const list = isMajor ? major : minor
-      list.push(
+      ;(isMajor ? major : minor).push(
         new THREE.Vector2(Math.cos(r) * DIAL.inner * S, -Math.sin(r) * DIAL.inner * S),
         new THREE.Vector2(Math.cos(r) * out * S, -Math.sin(r) * out * S),
       )
@@ -519,15 +504,12 @@ export class Game {
     const refDot = new THREE.Mesh(new THREE.CircleGeometry(4 * S, 24), refDotMat)
 
     const handle = new THREE.Group()
-    const handleFillMat = new THREE.MeshBasicMaterial({ color: '#0C0D0F', transparent: true, depthWrite: false })
+    const handleFillMat = new THREE.MeshBasicMaterial({ color: BACKGROUND, transparent: true, depthWrite: false, side: THREE.DoubleSide })
     const handleFill = new THREE.Mesh(new THREE.CircleGeometry(10 * S, 32), handleFillMat)
     const handleRingMat = mat(1)
     const handleRing = new THREE.Mesh(new THREE.RingGeometry(8.5 * S, 11.5 * S, 32), handleRingMat)
     handleRing.position.y = 0.0005
-    const handleHit = new THREE.Mesh(
-      new THREE.CircleGeometry(24 * S, 24),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
-    )
+    const handleHit = new THREE.Mesh(new THREE.CircleGeometry(24 * S, 24), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide }))
     handle.add(handleFill, handleRing, handleHit)
 
     // Ribbons are built flat already; primitives need laying down on the board.
@@ -538,9 +520,7 @@ export class Game {
     this.dialGroup.add(fill, inner, fine, finest, ticksMinor, ticksMajor, arm, refDot, handle)
     this.dialGroup.position.y = DIAL_Y
     this.dialGroup.visible = false
-    this.dialGroup.renderOrder = 10
 
-    flatDoubleSided(this.dialGroup)
     const materials = [fillMat, innerMat, guideMat, minorMat, majorMat, armMat, refDotMat, handleFillMat, handleRingMat]
     for (const m of materials) m.userData.baseOpacity = m.opacity
     this.dialParts = { arm, refDot, handle, handleHit, materials }
@@ -548,84 +528,86 @@ export class Game {
 
   // ----------------------------------------------------------------- update
 
-  /** Re-traces the beam and syncs every scene object and the snapshot to state. */
+  /** Re-traces the beams and syncs every scene object and the snapshot to state. */
   private update() {
-    for (const [id, m] of this.mirrors) {
-      m.pivot.rotation.y = (this.angles[id] * Math.PI) / 180
-    }
-    this.result = trace(this.level, this.angles)
-    const solved = isSolved(this.level, this.result)
+    this.syncViews()
+    this.result = trace(this.level, this.pieces)
+    const solved = this.mode === 'play' && isSolved(this.pieces, this.result) && this.tray.every((p) => !p.mustHit)
     if (solved && !this.solved) {
       this.unlockT = 0
       this.unlocked = false
     } else if (!solved) {
       this.unlockT = Infinity
       this.unlocked = false
-      disposeChildren(this.cometGroup)
+      disposeObject(this.cometGroup)
+      this.cometGroup.clear()
     }
     this.solved = solved
-    this.buildBeam()
+    this.buildBeams()
     this.updateDial()
+    this.updateResizeHandles()
     this.emit()
     this.requestFrame()
   }
 
-  private buildBeam() {
-    disposeChildren(this.beamGroup)
-    const color = new THREE.Color(this.level.laser.color)
-    const pts = this.result.points.map((p) => {
-      const w = this.toWorld(p.x, p.y)
-      return new THREE.Vector2(w.x, w.z)
-    })
-    const layer = (width: number, c: THREE.Color, opacity: number, y: number, additive = true) => {
-      const mesh = new THREE.Mesh(
-        ribbon(pts, width * S, { joints: true }),
-        new THREE.MeshBasicMaterial({
+  private buildBeams() {
+    disposeObject(this.beamGroup)
+    this.beamGroup.clear()
+    const byMask = new Map<number, THREE.Vector2[]>()
+    for (const s of this.result.segments) {
+      const a = this.toWorld(s.x1, s.y1)
+      const b = this.toWorld(s.x2, s.y2)
+      const list = byMask.get(s.mask) ?? []
+      list.push(new THREE.Vector2(a.x, a.z), new THREE.Vector2(b.x, b.z))
+      byMask.set(s.mask, list)
+    }
+    for (const [mask, pts] of byMask) {
+      const color = new THREE.Color(COLOR_HEX[mask])
+      const layer = (width: number, c: THREE.Color, opacity: number, y: number) => {
+        const mat = new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
           opacity,
           depthWrite: false,
-          blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-        }),
-      )
-      mesh.position.y = y
-      mesh.material.userData.base = c.clone()
-      this.beamGroup.add(mesh)
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+        })
+        mat.userData.base = c.clone()
+        const mesh = new THREE.Mesh(ribbon(pts, width * S, { joints: true, pairs: true }), mat)
+        mesh.position.y = y
+        this.beamGroup.add(mesh)
+      }
+      // Light spill on the board, then the beam itself: coloured body and a hot white core.
+      layer(22, color.clone().multiplyScalar(0.12), 1, 0.002)
+      layer(5, color.clone().multiplyScalar(0.9), 0.85, BEAM_Y)
+      layer(2.4, color.clone().multiplyScalar(1.8), 1, BEAM_Y + 0.0005)
+      layer(1, new THREE.Color(1, 1, 1).multiplyScalar(1.6), 1, BEAM_Y + 0.001)
     }
-    const lengths = [0]
-    for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + pts[i].distanceTo(pts[i - 1]))
-    this.beamPath = { pts, lengths, total: lengths[lengths.length - 1] }
-    // Light spill on the board, then the beam itself: coloured body and a hot white core.
-    layer(22, color.clone().multiplyScalar(0.12), 1, 0.002)
-    layer(5, color.clone().multiplyScalar(0.9), 0.85, BEAM_Y)
-    layer(2.4, color.clone().multiplyScalar(1.8), 1, BEAM_Y + 0.0005)
-    layer(1, new THREE.Color(1, 1, 1).multiplyScalar(1.6), 1, BEAM_Y + 0.001)
-
-    // Impact flare where the beam stops (wall or board edge).
-    if (!this.result.lit) {
-      const end = pts[pts.length - 1]
+    // Impact flares where beams stop on something other than a receiver.
+    for (const s of this.result.segments) {
+      const end = this.toWorld(s.x2, s.y2, BEAM_Y)
+      const ends = this.result.segments.some((o) => o !== s && Math.abs(o.x1 - s.x2) < 0.01 && Math.abs(o.y1 - s.y2) < 0.01)
+      if (ends) continue
       const flare = new THREE.Mesh(
-        new THREE.CircleGeometry(7 * S, 24),
-        new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(3), transparent: true, depthWrite: false }),
+        new THREE.CircleGeometry(6 * S, 20),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(COLOR_HEX[s.mask]).multiplyScalar(2.5), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
       )
       flare.rotation.x = -Math.PI / 2
-      flare.position.set(end.x, BEAM_Y, end.y)
+      flare.position.copy(end)
       this.beamGroup.add(flare)
     }
-    flatDoubleSided(this.beamGroup)
   }
 
   private updateDial() {
-    const id = this.selected
-    if (!id) return
-    const m = this.mirrors.get(id)!
-    const a = (this.angles[id] * Math.PI) / 180
-    const arm = this.arms[id]
+    const p = this.selected ? this.piece(this.selected) : null
+    if (!p || !this.canRotate(p)) return
+    const a = (p.angle * Math.PI) / 180
+    const arm = this.arms[p.id] ?? DIAL.defaultArm
     const c = Math.cos(a)
     const s = -Math.sin(a)
-    this.dialGroup.position.x = m.root.position.x
-    this.dialGroup.position.z = m.root.position.z
-
+    const w = this.toWorld(p.x, p.y)
+    this.dialGroup.position.x = w.x
+    this.dialGroup.position.z = w.z
     const { arm: armMesh, refDot, handle } = this.dialParts
     armMesh.geometry.dispose()
     armMesh.geometry = ribbon([new THREE.Vector2(0, 0), new THREE.Vector2(c * arm * S, s * arm * S)], 1.5 * S)
@@ -633,28 +615,70 @@ export class Game {
     handle.position.set(c * arm * S, handle.position.y, s * arm * S)
   }
 
+  /** Eight resize handles around a selected wall or glass block (edit mode). */
+  private updateResizeHandles() {
+    disposeObject(this.handleGroup)
+    this.handleGroup.clear()
+    const p = this.selected ? this.piece(this.selected) : null
+    if (!p || this.mode !== 'edit' || (p.type !== 'wall' && p.type !== 'glass')) return
+    const outline: THREE.Vector2[] = []
+    const corners = [
+      [-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1],
+    ]
+    for (const [sx, sy] of corners) {
+      const b = toBoard(p, (sx * (p.w + 12)) / 2, (sy * (p.h + 12)) / 2)
+      const w = this.toWorld(b.x, b.y)
+      outline.push(new THREE.Vector2(w.x, w.z))
+    }
+    const lineMat = new THREE.MeshBasicMaterial({ color: PALETTE.dial, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })
+    const line = new THREE.Mesh(ribbon(outline, 1.4 * S), lineMat)
+    line.position.y = 0.29
+    this.handleGroup.add(line)
+    for (const hx of [-1, 0, 1] as const) {
+      for (const hy of [-1, 0, 1] as const) {
+        if (!hx && !hy) continue
+        const b = toBoard(p, (hx * (p.w + 12)) / 2, (hy * (p.h + 12)) / 2)
+        const g = new THREE.Group()
+        g.position.copy(this.toWorld(b.x, b.y, 0.29))
+        g.rotation.y = (p.angle * Math.PI) / 180
+        const fill = new THREE.Mesh(new THREE.PlaneGeometry(10 * S, 10 * S), new THREE.MeshBasicMaterial({ color: BACKGROUND, side: THREE.DoubleSide }))
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(5 * S, 7 * S, 4, 1, Math.PI / 4),
+          new THREE.MeshBasicMaterial({ color: PALETTE.dial, side: THREE.DoubleSide }),
+        )
+        const hit = new THREE.Mesh(new THREE.PlaneGeometry(26 * S, 26 * S), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide }))
+        for (const m of [fill, ring, hit]) m.rotation.x = -Math.PI / 2
+        ring.position.y = 0.001
+        hit.userData.resize = { hx, hy }
+        g.add(fill, ring, hit)
+        this.handleGroup.add(g)
+      }
+    }
+  }
+
   private emit() {
-    const sel = this.selected
+    const sel = this.selected ? (this.piece(this.selected) ?? null) : null
     let dial: GameSnapshot['dial'] = null
-    if (sel && this.renderer.domElement.clientWidth > 0) {
-      const m = this.mirrors.get(sel)!.def
-      const a = (this.angles[sel] * Math.PI) / 180
-      const arm = this.arms[sel]
+    if (sel && this.canRotate(sel) && this.renderer.domElement.clientWidth > 0 && !(this.drag?.kind === 'move')) {
+      const a = (sel.angle * Math.PI) / 180
+      const arm = this.arms[sel.id] ?? DIAL.defaultArm
       const step = stepFor(arm, this.shift)
-      const label = this.toScreen(m.x + Math.cos(a) * (arm + 52), m.y - Math.sin(a) * (arm + 52))
       dial = {
-        ...label,
-        deg: this.angles[sel].toFixed(1) + '°',
+        ...this.toScreen(sel.x + Math.cos(a) * (arm + 52), sel.y - Math.sin(a) * (arm + 52)),
+        deg: sel.angle.toFixed(1) + '°',
         step: this.shift ? 'snap 15°' : `${step}° steps`,
       }
     }
-    const must = this.level.mirrors.filter((m) => m.mustHit)
+    const goals = receivers(this.pieces)
+    const must = [...this.pieces, ...this.tray].filter((p) => p.mustHit)
     this.snapshot = {
+      mode: this.mode,
       level: this.level,
-      angles: { ...this.angles },
+      pieces: this.pieces,
+      tray: this.tray,
       selected: sel,
-      dragging: this.dragging,
-      lit: this.result.lit,
+      dragging: this.drag !== null,
+      goals: { lit: goals.filter((g) => this.result.lit.has(g.id)).length, total: goals.length },
       solved: this.solved,
       unlocked: this.unlocked,
       mustHit: { hit: must.filter((m) => this.result.hits.has(m.id)).length, total: must.length },
@@ -677,8 +701,8 @@ export class Game {
 
     // Slight tilt: camera sits ~14° off vertical, toward the player.
     const tilt = (14 * Math.PI) / 180
-    const reserveTop = 84
-    const reserveBottom = 112
+    const reserveTop = this.insets.top
+    const reserveBottom = this.insets.bottom
     const boardW = (this.level.width + 80) * S
     const boardH = (this.level.height + 60) * S
     const availH = Math.max(0.3, (h - reserveTop - reserveBottom) / h)
@@ -688,9 +712,8 @@ export class Game {
     const dist = Math.max(distH, distW) * 1.02
     // Shift the look target so the board sits between the HUD bars.
     const offset = ((reserveBottom - reserveTop) / h) * dist * Math.tan(vFov / 2)
-    const target = new THREE.Vector3(0, 0, offset)
     this.camera.position.set(0, Math.cos(tilt) * dist, Math.sin(tilt) * dist + offset)
-    this.camera.lookAt(target)
+    this.camera.lookAt(new THREE.Vector3(0, 0, offset))
     this.camera.updateProjectionMatrix()
     this.emit()
     this.requestFrame()
@@ -717,94 +740,112 @@ export class Game {
     let busy = false
 
     // Dial: 180ms ease-out in, 120ms out (exits are faster than entrances).
-    const dialSpeed = this.dialTarget > this.dialAppear ? 1 / 0.18 : 1 / 0.12
-    if (this.dialAppear !== this.dialTarget) {
-      const d = this.dialTarget - this.dialAppear
-      this.dialAppear = reduced ? this.dialTarget : this.dialAppear + Math.sign(d) * Math.min(Math.abs(d), dt * dialSpeed)
+    const dialTarget = this.drag?.kind === 'move' ? 0 : this.dialTarget
+    if (this.dialAppear !== dialTarget) {
+      const d = dialTarget - this.dialAppear
+      const speed = d > 0 ? 1 / 0.18 : 1 / 0.12
+      this.dialAppear = reduced ? dialTarget : this.dialAppear + Math.sign(d) * Math.min(Math.abs(d), dt * speed)
       busy = true
     }
     const k = easeOut(this.dialAppear)
     this.dialGroup.visible = this.dialAppear > 0.001
-    const scale = reduced ? 1 : 0.94 + 0.06 * k
-    this.dialGroup.scale.setScalar(scale)
+    this.dialGroup.scale.setScalar(reduced ? 1 : 0.94 + 0.06 * k)
     for (const m of this.dialParts.materials) m.opacity = (m.userData.baseOpacity as number) * k
 
-    // Selection ring on free mirrors.
-    for (const [id, m] of this.mirrors) {
-      if (!m.base) continue
-      const mat = m.base.material as THREE.MeshBasicMaterial
-      const target = id === this.selected ? 0 : id === this.hovered ? 0.45 : 0.12
-      const next = approach(mat.opacity, target, dt, 0.08)
-      if (Math.abs(next - target) > 0.002) busy = true
-      mat.opacity = next
-    }
+    for (const p of this.pieces) {
+      const view = this.views.get(p.id)?.view
+      if (!view) continue
+      // Selection / hover ring.
+      const interactive = this.canRotate(p) || this.canMove(p)
+      const target = p.id === this.selected ? (this.canRotate(p) ? 0 : 0.8) : p.id === this.hovered && interactive ? 0.45 : interactive && this.mode === 'play' ? 0.12 : 0
+      const mat = view.base.material as THREE.MeshBasicMaterial
+      mat.opacity = approach(mat.opacity, target, dt, 0.08)
+      if (Math.abs(mat.opacity - target) > 0.002) busy = true
 
-    // Receiver glow eases in quickly; light reaching a target should feel immediate.
-    const lit = this.result.lit ? 1 : 0
-    if (this.result.lit && !this.wasLit && !reduced) this.pulseT = 0
-    this.wasLit = this.result.lit
-    this.litAmount = approach(this.litAmount, lit, dt, 0.06)
-    if (Math.abs(this.litAmount - lit) > 0.002) busy = true
-    const beam = new THREE.Color(this.level.laser.color)
-    this.receiver.ring.color.copy(new THREE.Color(COLORS.receiverDark).lerp(beam.clone().multiplyScalar(2.2), this.litAmount))
-    this.receiver.core.color.copy(new THREE.Color(COLORS.receiverCore).lerp(beam.clone().multiplyScalar(4), this.litAmount))
-    ;(this.receiver.halo.material as THREE.MeshBasicMaterial).opacity = 0.35 * this.litAmount
+      // Receiver glow eases in quickly; light reaching a target should feel immediate.
+      if (view.sensor) {
+        const lit = this.result.lit.has(p.id) ? 1 : 0
+        const was = this.litAmount.get(p.id) ?? 0
+        if (lit && was < 0.05 && !reduced && !this.pulses.has(p.id)) this.pulses.set(p.id, 0)
+        const now = approach(was, lit, dt, 0.06)
+        this.litAmount.set(p.id, now)
+        if (Math.abs(now - lit) > 0.002) busy = true
+        const s = view.sensor
+        s.ring.color.copy(s.color).multiplyScalar(0.42 + (2.2 - 0.42) * now)
+        s.core.color.copy(s.color).multiplyScalar(0.16 + (4 - 0.16) * now)
+        ;(s.halo.material as THREE.MeshBasicMaterial).opacity = 0.35 * now + 0.5 * this.surge * now
+        const pt = this.pulses.get(p.id)
+        if (pt !== undefined) {
+          const t = Math.min(1, pt + dt / 0.6)
+          const e = easeOut(t)
+          s.pulse.scale.setScalar(1 + e * 1.6)
+          ;(s.pulse.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - e)
+          if (t >= 1) this.pulses.delete(p.id)
+          else this.pulses.set(p.id, t)
+          busy = true
+        }
+        if (!lit) this.pulses.delete(p.id)
+      }
 
-    if (this.pulseT < 1) {
-      this.pulseT = Math.min(1, this.pulseT + dt / 0.6)
-      const p = easeOut(this.pulseT)
-      this.receiver.pulse.scale.setScalar(1 + p * 1.6)
-      ;(this.receiver.pulse.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - p)
-      busy = true
+      // Must-hit outline turns solid once a beam touches the piece.
+      if (view.mustRing) {
+        const hit = this.result.hits.has(p.id) ? 1 : 0
+        const sm = view.mustRing.solid.material as THREE.MeshBasicMaterial
+        sm.opacity = approach(sm.opacity, hit, dt, 0.06)
+        ;(view.mustRing.dashed.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - sm.opacity)
+        if (Math.abs(sm.opacity - hit) > 0.002) busy = true
+      }
     }
 
     busy = this.animateUnlock(dt, reduced) || busy
-
-    // Must-hit outline turns solid once the beam bounces off it.
-    for (const [id, m] of this.mirrors) {
-      if (!m.mustRing) continue
-      const hit = this.result.hits.has(id) ? 1 : 0
-      const solid = m.mustRing.userData.solid as THREE.Mesh
-      const sm = solid.material as THREE.MeshBasicMaterial
-      const dm = m.mustRing.material as THREE.MeshBasicMaterial
-      sm.opacity = approach(sm.opacity, hit, dt, 0.06)
-      dm.opacity = 0.7 * (1 - sm.opacity)
-      if (Math.abs(sm.opacity - hit) > 0.002) busy = true
-    }
     return busy
   }
 
   /**
-   * Plays the unlock: a comet of light runs at constant speed from the laser into the
-   * receiver and keeps flowing in until its tail is gone. As its head lands, the receiver
-   * bursts and the whole beam surges brighter before settling.
+   * Plays the unlock: light runs at constant speed from every laser along every branch and
+   * flows into the receivers. As it lands, each receiver bursts and the beams surge brighter.
    */
   private animateUnlock(dt: number, reduced: boolean) {
-    const SPEED = 1500 * S // board px per second; constant so the light never slows down
+    const SPEED = 1500 // board px per second; constant so the light never slows down
     const BURST = 0.7
     if (!Number.isFinite(this.unlockT) && this.surge < 0.002) return false
 
     if (Number.isFinite(this.unlockT)) {
-      const { total } = this.beamPath
-      const len = Math.max(140 * S, total * 0.2)
-      const arrival = total / SPEED
-      const end = Math.max((total + len) / SPEED, arrival + BURST)
+      const segs = this.result.segments
+      const maxD = segs.reduce((m, s) => Math.max(m, s.d1), 0)
+      const arrival = Math.max(0, ...this.result.lit.values()) / SPEED
+      const len = Math.max(140, maxD * 0.2)
+      const end = Math.max((maxD + len) / SPEED, arrival + BURST)
       this.unlockT = reduced ? end : this.unlockT + dt
       const t = this.unlockT
-      disposeChildren(this.cometGroup)
+      disposeObject(this.cometGroup)
+      this.cometGroup.clear()
 
       const head = t * SPEED
       const tail = head - len
-      if (tail < total) {
-        // The receiver swallows the comet: clip it at the beam's end instead of stopping.
-        const sub = this.subPath(Math.max(0, tail), Math.min(head, total))
-        const color = new THREE.Color(this.level.laser.color)
+      const byMask = new Map<number, THREE.Vector2[]>()
+      for (const s of segs) {
+        const from = Math.max(s.d0, tail)
+        const to = Math.min(s.d1, head)
+        if (to <= from) continue
+        const span = s.d1 - s.d0 || 1
+        const at = (d: number) => {
+          const f = (d - s.d0) / span
+          const w = this.toWorld(s.x1 + (s.x2 - s.x1) * f, s.y1 + (s.y2 - s.y1) * f)
+          return new THREE.Vector2(w.x, w.z)
+        }
+        const list = byMask.get(s.mask) ?? []
+        list.push(at(from), at(to))
+        byMask.set(s.mask, list)
+      }
+      for (const [mask, pts] of byMask) {
+        const color = new THREE.Color(COLOR_HEX[mask])
         for (const [w, c, o] of [
           [16, color.clone().multiplyScalar(1.4), 0.6],
           [5, new THREE.Color(1, 1, 1).multiplyScalar(4), 1],
         ] as const) {
           const mesh = new THREE.Mesh(
-            ribbon(sub, w * S, { joints: true }),
+            ribbon(pts, w * S, { joints: true, pairs: true }),
             new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
           )
           mesh.position.y = BEAM_Y + 0.002
@@ -812,22 +853,23 @@ export class Game {
         }
       }
 
+      // Each receiver bursts as the light reaches it.
+      for (const [id, d] of this.result.lit) {
+        const view = this.views.get(id)?.view
+        if (!view?.sensor) continue
+        const b = (t - d / SPEED) / BURST
+        const bm = view.sensor.burst.material as THREE.MeshBasicMaterial
+        if (b > 0 && b < 1 && !reduced) {
+          const k = easeOut(b)
+          view.sensor.burst.scale.setScalar(1 + k * 4)
+          bm.opacity = 1 - k
+        } else bm.opacity = 0
+      }
+
       if (t >= arrival && !this.unlocked) {
         this.unlocked = true
         this.surge = 1
-        this.pulseT = reduced ? 1 : 0
         this.emit()
-      }
-
-      // Burst ring expands out of the receiver as the comet lands.
-      const b = (t - arrival) / BURST
-      const bm = this.burst.material as THREE.MeshBasicMaterial
-      if (b > 0 && b < 1 && !reduced) {
-        const k = easeOut(b)
-        this.burst.scale.setScalar(1 + k * 4)
-        bm.opacity = 1 - k
-      } else {
-        bm.opacity = 0
       }
       if (t >= end) this.unlockT = Infinity
     }
@@ -840,95 +882,137 @@ export class Game {
       const base = mat.userData.base as THREE.Color | undefined
       if (base) mat.color.copy(base).multiplyScalar(boost)
     }
-    ;(this.receiver.halo.material as THREE.MeshBasicMaterial).opacity = 0.35 * this.litAmount + 0.5 * this.surge
     return true
-  }
-
-  /** Slice of the current beam polyline between two arc lengths. */
-  private subPath(from: number, to: number) {
-    const { pts, lengths } = this.beamPath
-    const at = (d: number) => {
-      let i = 1
-      while (i < lengths.length - 1 && lengths[i] < d) i++
-      const seg = lengths[i] - lengths[i - 1] || 1
-      return { i, p: pts[i - 1].clone().lerp(pts[i], (d - lengths[i - 1]) / seg) }
-    }
-    const a = at(from)
-    const b = at(to)
-    const out = [a.p]
-    for (let i = a.i; i < b.i; i++) out.push(pts[i])
-    out.push(b.p)
-    return out
   }
 
   // ---------------------------------------------------------------- input
 
-  private hovered: string | null = null
-
-  private pick(e: PointerEvent): { kind: 'handle' } | { kind: 'mirror'; id: string } | { kind: 'board' } {
+  private pick(e: PointerEvent):
+    | { kind: 'handle' }
+    | { kind: 'resize'; hx: -1 | 0 | 1; hy: -1 | 0 | 1 }
+    | { kind: 'piece'; id: string }
+    | { kind: 'board' } {
     const ray = this.pointerRay(e)
-    if (this.selected && this.dialAppear > 0.5) {
-      if (ray.intersectObject(this.dialParts.handleHit, false).length) return { kind: 'handle' }
-    }
-    const targets = [...this.mirrors.values()].filter((m) => !m.def.fixed).map((m) => m.hit)
+    if (this.selected && this.dialAppear > 0.5 && ray.intersectObject(this.dialParts.handleHit, false).length) return { kind: 'handle' }
+    const rh = ray.intersectObjects(this.handleGroup.children, true).find((h) => h.object.userData.resize)
+    if (rh) return { kind: 'resize', ...(rh.object.userData.resize as { hx: -1 | 0 | 1; hy: -1 | 0 | 1 }) }
+    const targets = [...this.views.values()].map((v) => v.view.hit)
     const hit = ray.intersectObjects(targets, false)[0]
-    if (hit) return { kind: 'mirror', id: hit.object.userData.mirrorId as string }
+    if (hit) return { kind: 'piece', id: hit.object.userData.pieceId as string }
     return { kind: 'board' }
   }
 
   private onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return
+    const el = this.renderer.domElement
     const p = this.pick(e)
     if (p.kind === 'handle') {
-      this.dragging = true
-      this.dragStartAngle = this.angles[this.selected!]
-      this.renderer.domElement.setPointerCapture(e.pointerId)
-      this.renderer.domElement.style.cursor = 'grabbing'
+      const piece = this.piece(this.selected!)!
+      this.drag = { kind: 'rotate', id: piece.id, startAngle: piece.angle }
+      el.setPointerCapture(e.pointerId)
+      el.style.cursor = 'grabbing'
       this.emit()
-    } else if (p.kind === 'mirror') {
-      this.select(p.id)
+    } else if (p.kind === 'resize') {
+      const piece = this.piece(this.selected!)!
+      if (piece.type !== 'wall' && piece.type !== 'glass') return
+      // The opposite edge or corner stays put while dragging.
+      this.drag = { kind: 'resize', id: piece.id, hx: p.hx, hy: p.hy, anchor: toBoard(piece, (-p.hx * piece.w) / 2, (-p.hy * piece.h) / 2) }
+      el.setPointerCapture(e.pointerId)
+      this.emit()
+    } else if (p.kind === 'piece') {
+      const piece = this.piece(p.id)!
+      if (this.selected !== p.id) this.select(p.id)
+      if (this.canMove(piece)) {
+        const b = this.pointerToBoard(e)
+        if (b) {
+          this.drag = { kind: 'move', id: piece.id, dx: piece.x - b.x, dy: piece.y - b.y, startX: piece.x, startY: piece.y, moved: false, fromTray: false }
+          el.setPointerCapture(e.pointerId)
+        }
+      }
     } else {
       this.select(null)
     }
   }
 
   private onPointerMove = (e: PointerEvent) => {
-    if (this.dragging && this.selected) {
-      const ray = this.pointerRay(e)
-      const hit = new THREE.Vector3()
-      if (!ray.ray.intersectPlane(this.boardPlane, hit)) return
-      const b = this.toBoard(hit)
-      const id = this.selected
-      const m = this.mirrors.get(id)!.def
-      const vx = b.x - m.x
-      const vy = m.y - b.y
-      const arm = clamp(Math.hypot(vx, vy), DIAL.minArm, DIAL.maxArm)
-      this.shift = e.shiftKey
-      const step = stepFor(arm, e.shiftKey)
-      let deg = (Math.atan2(vy, vx) * 180) / Math.PI
-      deg = Math.round(deg / step) * step
-      this.angles[id] = Math.round(normalize(deg) * 10) / 10
-      this.arms[id] = arm
+    const drag = this.drag
+    const el = this.renderer.domElement
+    if (drag) {
+      const b = this.pointerToBoard(e)
+      if (!b) return
+      const p = this.piece(drag.id)
+      if (!p) return
+      if (drag.kind === 'rotate') {
+        const vx = b.x - p.x
+        const vy = p.y - b.y
+        const arm = clamp(Math.hypot(vx, vy), DIAL.minArm, DIAL.maxArm)
+        this.shift = e.shiftKey
+        const step = stepFor(arm, e.shiftKey)
+        const deg = Math.round(((Math.atan2(vy, vx) * 180) / Math.PI) / step) * step
+        this.setPiece(p.id, { angle: Math.round(normalize(deg) * 10) / 10 })
+        this.arms[p.id] = arm
+      } else if (drag.kind === 'move') {
+        const x = this.snap(b.x + drag.dx)
+        const y = this.snap(b.y + drag.dy)
+        if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < SNAP) return
+        drag.moved = true
+        el.style.cursor = 'grabbing'
+        this.setPiece(p.id, { x, y })
+      } else if (drag.kind === 'resize' && (p.type === 'wall' || p.type === 'glass')) {
+        // Work in the piece's own frame so rotated glass resizes along its sides.
+        const r = (p.angle * Math.PI) / 180
+        const c = Math.cos(r)
+        const s = Math.sin(r)
+        const dx = b.x - drag.anchor.x
+        const dy = b.y - drag.anchor.y
+        const lx = dx * c - dy * s
+        const ly = dx * s + dy * c
+        const w = drag.hx ? Math.max(SNAP * 2, this.snap(Math.abs(lx))) : p.w
+        const h = drag.hy ? Math.max(SNAP * 2, this.snap(Math.abs(ly))) : p.h
+        const centre = toBoard({ ...drag.anchor, angle: p.angle }, (drag.hx * w) / 2, (drag.hy * h) / 2)
+        this.setPiece(p.id, { w, h, x: drag.hx ? centre.x : p.x, y: drag.hy ? centre.y : p.y } as Partial<Piece>)
+      }
       this.update()
       return
     }
     const p = this.pick(e)
-    const hovered = p.kind === 'mirror' ? p.id : null
+    const hovered = p.kind === 'piece' ? p.id : null
     if (hovered !== this.hovered) {
       this.hovered = hovered
       this.requestFrame()
     }
-    this.renderer.domElement.style.cursor = p.kind === 'handle' ? 'grab' : p.kind === 'mirror' ? 'pointer' : 'default'
+    const piece = hovered ? this.piece(hovered) : null
+    el.style.cursor =
+      p.kind === 'handle' ? 'grab' : p.kind === 'resize' ? 'nwse-resize' : piece && this.canMove(piece) ? 'move' : piece && this.canRotate(piece) ? 'pointer' : 'default'
   }
 
   private onPointerUp = (e: PointerEvent) => {
-    if (!this.dragging) return
-    this.dragging = false
+    const drag = this.drag
+    if (!drag) return
+    this.drag = null
     this.shift = false
-    if (this.renderer.domElement.hasPointerCapture(e.pointerId)) this.renderer.domElement.releasePointerCapture(e.pointerId)
-    this.renderer.domElement.style.cursor = 'grab'
-    if (this.selected && this.angles[this.selected] !== this.dragStartAngle) this.moves++
-    this.emit()
+    const el = this.renderer.domElement
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+    el.style.cursor = 'default'
+    const p = this.piece(drag.id)
+    if (drag.kind === 'rotate' && p && p.angle !== drag.startAngle) this.moves++
+    if (drag.kind === 'move' && p && drag.moved) {
+      const b = this.pointerToBoard(e)
+      if (!b || !this.insideBoard(b.x, b.y)) {
+        // Dropped off the board: kit pieces go back to the tray, sandbox pieces are deleted.
+        this.pieces = this.pieces.filter((q) => q.id !== p.id)
+        if (this.mode === 'play') this.tray.push({ ...p })
+        this.selected = null
+        this.dialTarget = 0
+      } else {
+        this.moves++
+        if (this.canRotate(p)) {
+          this.dialAppear = prefersReducedMotion() ? 1 : 0
+          this.dialTarget = 1
+        }
+      }
+    }
+    this.update()
   }
 
   private onPointerLeave = () => {
@@ -939,8 +1023,8 @@ export class Game {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, [contenteditable]')) return
-    if (e.key === 'Shift' && this.dragging) {
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return
+    if (e.key === 'Shift' && this.drag?.kind === 'rotate') {
       this.shift = true
       this.emit()
       return
@@ -956,6 +1040,9 @@ export class Game {
       this.nudge(-step)
     } else if (e.key === 'Escape') {
       this.select(null)
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.mode === 'edit' && this.selected) {
+      e.preventDefault()
+      this.removePiece(this.selected)
     } else if (e.key === 'Tab' && !(e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement)) {
       e.preventDefault()
       this.cycleSelection(e.shiftKey ? -1 : 1)
@@ -983,25 +1070,3 @@ function approach(current: number, target: number, dt: number, tau: number) {
   return target + (current - target) * Math.exp(-dt / tau)
 }
 
-function disposeChildren(group: THREE.Group) {
-  for (const child of [...group.children]) {
-    child.traverse((o) => {
-      if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
-        o.geometry.dispose()
-        const mats = Array.isArray(o.material) ? o.material : [o.material]
-        mats.forEach((m: THREE.Material) => {
-          ;(m as THREE.MeshStandardMaterial).map?.dispose()
-          m.dispose()
-        })
-      }
-    })
-    group.remove(child)
-  }
-}
-
-/** Flat overlay meshes are seen from above only, so render both faces regardless of winding. */
-function flatDoubleSided(group: THREE.Object3D) {
-  group.traverse((o) => {
-    if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial) o.material.side = THREE.DoubleSide
-  })
-}

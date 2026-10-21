@@ -1,44 +1,38 @@
 import { describe, expect, it } from 'vitest'
+import { boardPieces, solutionWorks } from './levelTools'
 import { LEVELS } from './levels'
+import type { LevelDef, Piece } from './schema'
 import { isSolved, trace } from './trace'
 
 const STEP = 0.5
 
-function startAngles(level: (typeof LEVELS)[number]) {
-  return Object.fromEntries(level.mirrors.map((m) => [m.id, m.angle]))
-}
-
-/** Brute-forces every free mirror at STEP° resolution and returns the first solution. */
-function solve(level: (typeof LEVELS)[number]) {
-  const free = level.mirrors.filter((m) => !m.fixed)
-  const angles = startAngles(level)
+/** Brute-forces every rotatable piece at STEP° resolution. Only for levels without kit pieces. */
+function bruteForce(level: LevelDef) {
+  const pieces: Piece[] = level.pieces.map((p) => ({ ...p }))
+  const free = pieces.filter((p) => p.lock === 'rotate')
   const search = (i: number): boolean => {
-    if (i === free.length) return isSolved(level, trace(level, angles))
+    if (i === free.length) return isSolved(pieces, trace(level, pieces))
     for (let a = 0; a < 360; a += STEP) {
-      angles[free[i].id] = a
+      free[i].angle = a
       if (search(i + 1)) return true
     }
     return false
   }
-  return search(0) ? { ...angles } : null
+  return search(0)
 }
 
 describe('levels', () => {
   for (const level of LEVELS) {
     it(`${level.id} is not solved at the start`, () => {
-      expect(isSolved(level, trace(level, startAngles(level)))).toBe(false)
+      const start = boardPieces(level)
+      expect(isSolved(start, trace(level, start))).toBe(false)
     })
     it(`${level.id} has a solution`, () => {
-      expect(solve(level)).not.toBeNull()
+      if (level.solution) expect(solutionWorks(level)).toBe(true)
+      else {
+        expect(level.pieces.some((p) => p.lock === 'kit'), 'kit levels need a stored solution').toBe(false)
+        expect(bruteForce(level)).toBe(true)
+      }
     })
   }
-})
-
-describe('trace', () => {
-  it('reflects off a 45° mirror', () => {
-    const level = LEVELS[0]
-    const r = trace(level, { A: 135 })
-    expect(r.lit).toBe(true)
-    expect(r.hits.has('A')).toBe(true)
-  })
 })

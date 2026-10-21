@@ -14,8 +14,9 @@ describe('level files', () => {
   })
 
   it('rejects broken levels with a readable message', () => {
-    const bad = { ...LEVELS[0], mirrors: [LEVELS[0].mirrors[0], LEVELS[0].mirrors[0]], laser: { ...LEVELS[0].laser, color: 'red' } }
-    expect(() => parseLevel(bad)).toThrow(/duplicate mirror id[\s\S]*#RRGGBB|#RRGGBB[\s\S]*duplicate mirror id/)
+    const [first] = LEVELS[0].pieces
+    expect(() => parseLevel({ ...LEVELS[0], pieces: [first, first] })).toThrow(/duplicate piece id/)
+    expect(() => parseLevel({ ...LEVELS[0], pieces: [{ ...first, color: 'pink' }] })).toThrow(/pieces\[0\]\.color/)
   })
 
   it('keeps level.schema.json in sync with the zod schema (run npm run levels:schema)', () => {

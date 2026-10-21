@@ -1,55 +1,61 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { DialOverlay } from './components/DialOverlay'
-import { FinishButton } from './components/FinishButton'
-import { Hud } from './components/Hud'
-import { KitTray } from './components/KitTray'
-import { Game, type GameSnapshot } from './game/Game'
+import { useCallback, useEffect } from 'react'
 import { LEVELS } from './game/levels'
-
-const noop = () => () => {}
-const empty = () => null
+import { go, useRoute } from './lib/route'
+import { getTestLevel, markSolved } from './lib/storage'
+import { LevelSelectScreen } from './screens/LevelSelectScreen'
+import { MenuScreen } from './screens/MenuScreen'
+import { PlayScreen } from './screens/PlayScreen'
+import { SandboxScreen } from './screens/SandboxScreen'
 
 export default function App() {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const [game, setGame] = useState<Game | null>(null)
-  const [levelIndex, setLevelIndex] = useState(0)
+  const route = useRoute()
+  switch (route.name) {
+    case 'levels':
+      return <LevelSelectScreen />
+    case 'sandbox':
+      return <SandboxScreen />
+    case 'test': {
+      const level = getTestLevel()
+      if (!level) return <Redirect to="/sandbox" />
+      return (
+        <PlayScreen
+          key="test"
+          level={level}
+          backLabel="Back to editor"
+          finishLabel="Back to editor"
+          onBack={() => go('/sandbox')}
+          onFinish={() => go('/sandbox')}
+        />
+      )
+    }
+    case 'play':
+      return <LevelRoute id={route.id} />
+    default:
+      return <MenuScreen />
+  }
+}
 
-  useEffect(() => {
-    const g = new Game(hostRef.current!)
-    setGame(g)
-    if (import.meta.env.DEV) Object.assign(window, { __game: g })
-    return () => g.dispose()
-  }, [])
-
-  useEffect(() => {
-    game?.load(LEVELS[levelIndex])
-  }, [game, levelIndex])
-
-  const snap: GameSnapshot | null = useSyncExternalStore(game?.subscribe ?? noop, game?.getSnapshot ?? empty)
-  const goTo = (i: number) => setLevelIndex((i + LEVELS.length) % LEVELS.length)
-  const isLast = levelIndex === LEVELS.length - 1
-  // After the last level, finishing loops back to the first.
-  const finish = useCallback(() => setLevelIndex((i) => (i + 1) % LEVELS.length), [])
-
+function LevelRoute({ id }: { id: string }) {
+  const index = LEVELS.findIndex((l) => l.id === id)
+  const level = LEVELS[index]
+  const next = LEVELS[index + 1]
+  const onSolved = useCallback(() => markSolved(id), [id])
+  const onFinish = useCallback(() => go(next ? `/play/${next.id}` : '/levels'), [next])
+  if (!level) return <Redirect to="/levels" />
   return (
-    <div className="relative h-full w-full select-none">
-      <div ref={hostRef} className="absolute inset-0" />
-      {snap && (
-        <>
-          <Hud
-            snap={snap}
-            levelIndex={levelIndex}
-            levelCount={LEVELS.length}
-            onPrev={() => goTo(levelIndex - 1)}
-            onNext={() => goTo(levelIndex + 1)}
-            onReset={() => game?.reset()}
-          />
-          <DialOverlay dial={snap.dial} />
-          <KitTray snap={snap}>
-            <FinishButton unlocked={snap.unlocked} isLast={isLast} beam={snap.level.laser.color} onFinish={finish} />
-          </KitTray>
-        </>
-      )}
-    </div>
+    <PlayScreen
+      key={level.id}
+      level={level}
+      backLabel="Back to levels"
+      finishLabel={next ? 'Finish round' : 'Finish'}
+      onBack={() => go('/levels')}
+      onFinish={onFinish}
+      onSolved={onSolved}
+    />
   )
+}
+
+function Redirect({ to }: { to: string }) {
+  useEffect(() => go(to), [to])
+  return null
 }
