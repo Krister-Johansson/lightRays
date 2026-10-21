@@ -19,6 +19,6 @@ describe('level files', () => {
   })
 
   it('keeps level.schema.json in sync with the zod schema (run npm run levels:schema)', () => {
-    expect(schemaFile).toEqual(JSON.parse(JSON.stringify(z.toJSONSchema(LevelSchema, { io: 'input', unrepresentable: 'any' }))))
+    expect(schemaFile).toEqual(z.toJSONSchema(LevelSchema, { io: 'input', unrepresentable: 'any' }))
   })
 })

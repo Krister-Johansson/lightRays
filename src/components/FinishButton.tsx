@@ -1,5 +1,5 @@
 import { ArrowRight, Lock } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 
 type Props = {
   unlocked: boolean
@@ -13,14 +13,15 @@ type Props = {
  * beam colour with a one-off sweep of light. Enter finishes the round too.
  */
 export function FinishButton({ unlocked, isLast, beam, onFinish }: Props) {
+  const finishFromKeyboard = useEffectEvent(() => onFinish())
   useEffect(() => {
     if (!unlocked) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) onFinish()
+      if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) finishFromKeyboard()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [unlocked, onFinish])
+  }, [unlocked])
 
   return (
     <button
