@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Space Grotesk Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-ink: #0c0d0f;
+  --color-panel: #141619;
+  --color-panel-2: #111315;
+  --color-card: #15171a;
+  --color-line: #23272c;
+  --color-line-strong: #2e3238;
+  --color-fg: #eceae4;
+  --color-muted: #a3a7ae;
+  --color-faint: #8a8f97;
+  --color-amber: #ffc940;
+  --color-amber-ink: #14120a;
+  --color-dial: #4fa8ff;
+
+  /* Strong ease-out for UI responses (emil-design-eng). */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Press feedback for every control: quick scale-down, fast release. */
+.pressable {
+  transition:
+    transform 160ms var(--ease-out-strong),
+    background-color 160ms var(--ease-out-strong),
+    border-color 160ms var(--ease-out-strong);
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pressable:hover {
+    border-color: #3a3f46;
+    background-color: #1a1d21;
+  }
+  .pressable-primary:hover {
+    background-color: #ffd466;
+  }
+}
+
+/* Popover-style entrance: never from nothing, a small scale and fade. */
+.enter-pop {
+  transition:
+    opacity 220ms var(--ease-out-strong),
+    transform 220ms var(--ease-out-strong);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+}
+
+.enter-fade {
+  transition: opacity 260ms var(--ease-out-strong);
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable:active {
+    transform: none;
+  }
+  .enter-pop {
+    @starting-style {
+      transform: none;
+    }
+  }
+}
