@@ -35,13 +35,26 @@ npm run lint     # oxlint
 | Path | What it does |
 | --- | --- |
 | `src/game/trace.ts` | Pure 2D ray tracer (mirrors, walls, receiver). No three.js. |
-| `src/game/levels.ts` | Level data in board pixels (1120 × 620 board). |
+| `src/levels/*.json` | One JSON file per level (board pixels, 1120 × 620 board). |
+| `src/game/schema.ts` | zod schema: `parseLevel` (import/validate) and `serializeLevel` (export). |
+| `src/game/levels.ts` | Loads every level file, validates it and sorts by id. |
 | `src/game/levels.test.ts` | Brute-forces every level to prove it's solvable and not pre-solved. |
 | `src/game/Game.ts` | three.js scene, bloom, rotation dial, input and render-on-demand loop. |
 | `src/components/` | React HUD: top bar, dial angle readout, kit tray, finish-round button. |
 
 The scene only renders when something changes or an animation is running, so an idle board
 costs nothing.
+
+## Levels
+
+Each level is a JSON file in `src/levels/`, named after its id (`1-4.json`). To add one, copy an
+existing file, change the id and layout, and run `npm test`: it validates the file and brute-forces
+the mirrors to prove the level can be solved and isn't solved at the start. Files point at
+`level.schema.json`, so editors like VS Code autocomplete and flag mistakes. After changing
+`src/game/schema.ts`, regenerate it with `npm run levels:schema`.
+
+`parseLevel()` and `serializeLevel()` in `src/game/schema.ts` are the import/export path for a
+future level editor or sandbox mode.
 
 ## Design
 

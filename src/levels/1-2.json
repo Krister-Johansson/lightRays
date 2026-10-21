@@ -1,0 +1,42 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 1,
+  "id": "1-2",
+  "name": "Around the wall",
+  "par": 2,
+  "width": 1120,
+  "height": 620,
+  "laser": {
+    "x": 70,
+    "y": 500,
+    "angle": 0,
+    "color": "#FFC940"
+  },
+  "receiver": {
+    "x": 980,
+    "y": 200,
+    "r": 22
+  },
+  "mirrors": [
+    {
+      "id": "A",
+      "x": 300,
+      "y": 500,
+      "angle": 30
+    },
+    {
+      "id": "B",
+      "x": 300,
+      "y": 110,
+      "angle": 300
+    }
+  ],
+  "walls": [
+    {
+      "x": 520,
+      "y": 240,
+      "w": 60,
+      "h": 380
+    }
+  ]
+}

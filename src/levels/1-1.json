@@ -1,0 +1,36 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 1,
+  "id": "1-1",
+  "name": "First bounce",
+  "par": 1,
+  "width": 1120,
+  "height": 620,
+  "laser": {
+    "x": 70,
+    "y": 420,
+    "angle": 0,
+    "color": "#FFC940"
+  },
+  "receiver": {
+    "x": 600,
+    "y": 110,
+    "r": 22
+  },
+  "mirrors": [
+    {
+      "id": "A",
+      "x": 600,
+      "y": 420,
+      "angle": 60
+    }
+  ],
+  "walls": [
+    {
+      "x": 380,
+      "y": 160,
+      "w": 60,
+      "h": 160
+    }
+  ]
+}

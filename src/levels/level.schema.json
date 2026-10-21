@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^\\d+-\\d+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "par": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Fewest moves a tidy solution needs"
+    },
+    "width": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "height": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "laser": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "angle": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "angle",
+        "color"
+      ]
+    },
+    "receiver": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "r": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "r"
+      ]
+    },
+    "mirrors": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "angle": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": 360,
+            "description": "Normal direction of the reflective face, in degrees"
+          },
+          "fixed": {
+            "description": "Fixed mirrors can't be rotated by the player",
+            "type": "boolean"
+          },
+          "mustHit": {
+            "description": "The beam must bounce off this mirror to solve the level",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "x",
+          "y",
+          "angle"
+        ]
+      }
+    },
+    "walls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "h": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ]
+      }
+    }
+  },
+  "required": [
+    "version",
+    "id",
+    "name",
+    "par",
+    "width",
+    "height",
+    "laser",
+    "receiver",
+    "mirrors",
+    "walls"
+  ]
+}
