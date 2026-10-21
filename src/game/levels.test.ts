@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boardPieces, solutionWorks } from './levelTools'
 import { LEVELS } from './levels'
+import { playerCanRotate } from './pieces'
 import type { LevelDef, Piece } from './schema'
 import { isSolved, trace } from './trace'
 
@@ -9,7 +10,7 @@ const STEP = 0.5
 /** Brute-forces every rotatable piece at STEP° resolution. Only for levels without kit pieces. */
 function bruteForce(level: LevelDef) {
   const pieces: Piece[] = level.pieces.map((p) => ({ ...p }))
-  const free = pieces.filter((p) => p.lock === 'rotate')
+  const free = pieces.filter((p) => p.lock !== 'kit' && playerCanRotate(p))
   const search = (i: number): boolean => {
     if (i === free.length) return isSolved(pieces, trace(level, pieces))
     for (let a = 0; a < 360; a += STEP) {

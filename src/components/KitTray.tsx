@@ -1,7 +1,7 @@
 import { Lock } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Game, GameSnapshot } from '../game/Game'
-import { PIECE_INFO } from '../game/pieces'
+import { PIECE_INFO, playerCanResize, playerCanRotate } from '../game/pieces'
 import type { Piece } from '../game/schema'
 import { PieceIcon } from './PieceIcon'
 
@@ -12,7 +12,7 @@ const pieceColor = (p: Piece) => ('color' in p ? p.color : undefined)
  * player can turn show their angle.
  */
 export function KitTray({ snap, game, children }: { snap: GameSnapshot; game: Game; children?: ReactNode }) {
-  const onBoard = snap.pieces.filter((p) => p.lock !== 'fixed' && PIECE_INFO[p.type].rotatable)
+  const onBoard = snap.pieces.filter((p) => p.lock === 'kit' || playerCanRotate(p) || playerCanResize(p))
   return (
     <footer className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[112px] items-center justify-center gap-4 px-4 sm:px-8">
       <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-line bg-panel-2 px-3.5 py-2.5">

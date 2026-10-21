@@ -1,4 +1,5 @@
 import { isSolved, trace } from './trace'
+import { playerCanResize, playerCanRotate } from './pieces'
 import type { LevelDef, Piece, Placement } from './schema'
 
 /** Pieces on the board when a level starts: kit pieces wait in the tray. */
@@ -24,12 +25,14 @@ export function solutionWorks(level: LevelDef): boolean {
 export function toPlayable(level: LevelDef): LevelDef {
   const solution: Record<string, Placement> = {}
   for (const p of level.pieces) {
-    if (p.lock !== 'fixed') solution[p.id] = { x: p.x, y: p.y, angle: p.angle }
+    if (p.lock === 'kit' || playerCanRotate(p) || playerCanResize(p)) {
+      solution[p.id] = { x: p.x, y: p.y, angle: p.angle, ...(p.scale !== undefined && { scale: p.scale }) }
+    }
   }
   let k = 0
   const scramble = (pieces: Piece[]): Piece[] =>
     pieces.map((p, i) =>
-      p.lock === 'rotate' ? { ...p, angle: Math.round(((p.angle + 70 + 25 * i + 35 * k) % 360) / 5) * 5 % 360 } : p,
+      p.lock !== 'kit' && playerCanRotate(p) ? { ...p, angle: Math.round(((p.angle + 70 + 25 * i + 35 * k) % 360) / 5) * 5 % 360 } : p,
     )
   let pieces = scramble(level.pieces)
   const start = (ps: Piece[]) => ps.filter((p) => p.lock !== 'kit')

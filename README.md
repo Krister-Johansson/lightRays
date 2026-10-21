@@ -66,7 +66,7 @@ Scroll (or the zoom buttons, or + − 0) zooms toward the pointer, and dragging 
 
 Open it from the menu (`#/sandbox`). Drag pieces from the left palette onto the board, drag a
 piece off the board to delete it, rotate with the dial and resize walls and glass with their
-handles. The right inspector sets who places each piece (fixed, rotate only, or in the
+handles, and stretch any other optic with the handles at the ends of its face. The right inspector sets who places each piece (fixed, rotate only, or in the
 player's kit), "must be hit", colour, size and focal length, and the board size (up to
 1760 × 980) when nothing is selected. **Test play** plays your board as a level, with
 kit pieces moved into the tray. **Export** downloads the level JSON (your layout is saved as
@@ -96,8 +96,10 @@ costs nothing.
 
 Each level is a JSON file in `src/levels/`, named after its id (`1-4.json`). The easiest way to
 make one is to build it in the sandbox and export it. A level has a list of `pieces`, each with
-a `type`, centre `x`/`y`, `angle` (degrees, counter-clockwise) and `lock`: `fixed`, `rotate`
-(player can turn it) or `kit` (starts in the player's tray). An optional `solution` stores the
+a `type`, centre `x`/`y`, `angle` (degrees, counter-clockwise), an optional `scale` and `lock`:
+`fixed` (starts on the board) or `kit` (starts in the player's tray). `rotate` and `resize` say
+whether the player may turn or resize it (an older `lock: "rotate"` still means fixed but turnable).
+Pieces can't overlap: dragging, placing and resizing stop at the last free spot. An optional `solution` stores the
 solved placement of each movable piece. `npm test` validates every file and proves the level
 can be solved and isn't solved at the start. Files point at `level.schema.json`, so editors like
 VS Code autocomplete and flag mistakes. After changing `src/game/schema.ts`, regenerate it with

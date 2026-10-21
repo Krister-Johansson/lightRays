@@ -10,7 +10,10 @@ import {
   MIRROR_HALF,
   PLATE_HALF,
   RECEIVER_R,
+  playerCanResize,
+  playerCanRotate,
   RETRO_HALF,
+  scaleOf,
   SPLITTER_HALF,
   TUBE,
 } from './pieces'
@@ -20,6 +23,8 @@ import type { Vec2 } from './types'
 /** World units per board pixel. */
 export const S = 0.01
 export const BEAM_Y = 0.07
+/** Sensor ring and core brightness while dark. */
+export const SENSOR_IDLE = { ring: 0.75, core: 0.35 }
 
 export const PALETTE = {
   wall: '#24272C',
@@ -141,14 +146,16 @@ function buildSensor(p: Extract<Piece, { type: 'receiver' | 'tube' }>, pivot: TH
   const g = new THREE.Group()
   g.position.x = cx
   if (p.type === 'receiver') {
-    const housing = new THREE.Mesh(new THREE.CylinderGeometry(r * S, r * S * 1.05, 0.16, 48), std('#1B1E22'))
+    // Light metal housing like the laser, so goals read clearly on the dark board.
+    const housing = new THREE.Mesh(new THREE.CylinderGeometry(r * S, r * S * 1.08, 0.16, 48), std('#4A5059', { roughness: 0.45, metalness: 0.5 }))
     housing.position.y = 0.08
     housing.castShadow = true
     g.add(housing)
+    g.add(flat(new THREE.RingGeometry(r * S, (r + 1.5) * S, 48), new THREE.MeshBasicMaterial({ color: '#7A818B' }), 0.1605))
   }
   const top = p.type === 'tube' ? 0.03 : 0.161
-  const ring = new THREE.MeshBasicMaterial({ color: tint.clone().multiplyScalar(0.42) })
-  const core = new THREE.MeshBasicMaterial({ color: tint.clone().multiplyScalar(0.16) })
+  const ring = new THREE.MeshBasicMaterial({ color: tint.clone().multiplyScalar(SENSOR_IDLE.ring) })
+  const core = new THREE.MeshBasicMaterial({ color: tint.clone().multiplyScalar(SENSOR_IDLE.core) })
   g.add(flat(new THREE.RingGeometry((r - 4) * S, r * S, 48), ring, top))
   g.add(flat(new THREE.CircleGeometry((r * 0.4) * S, 32), core, top + 0.001))
   const additive = (o = 0) =>
@@ -158,7 +165,9 @@ function buildSensor(p: Extract<Piece, { type: 'receiver' | 'tube' }>, pivot: TH
   const burstMat = additive()
   burstMat.color.multiplyScalar(2)
   const burst = flat(new THREE.RingGeometry(r * S, (r + 6) * S, 64), burstMat, 0.004)
-  g.add(halo, pulse, burst)
+  // A faint coloured pool marks the goal even while it's dark.
+  const pool = flat(new THREE.CircleGeometry((r + 16) * S, 48), additive(0.1), 0.0025)
+  g.add(pool, halo, pulse, burst)
   pivot.add(g)
   view.sensor = { ring, core, halo, pulse, burst, color: tint }
 }
@@ -169,6 +178,12 @@ export function buildPieceView(p: Piece): PieceView {
   const pivot = new THREE.Group()
   root.add(pivot)
   const view: Partial<PieceView> = { root, pivot }
+
+  // Flat optics are built at scale 1 and stretched along their face; the splitter cube both ways.
+  const body = new THREE.Group()
+  pivot.add(body)
+  const k = scaleOf(p)
+  body.scale.set(p.type === 'splitter' ? k : 1, 1, k)
 
   switch (p.type) {
     case 'laser': {
@@ -194,13 +209,13 @@ export function buildPieceView(p: Piece): PieceView {
       break
     }
     case 'mirror':
-      pivot.add(flatOptic(MIRROR_HALF, PALETTE.mirrorFace, PALETTE.mirrorBack))
+      body.add(flatOptic(MIRROR_HALF, PALETTE.mirrorFace, PALETTE.mirrorBack))
       break
     case 'double-mirror': {
       const g = flatOptic(MIRROR_HALF, PALETTE.mirrorFace, null)
       g.add(box(2 * S, 0.15, MIRROR_HALF * 2 * S, std(PALETTE.mirrorBack), -2.5 * S))
       g.add(box(2 * S, 0.15, MIRROR_HALF * 2 * S, std(PALETTE.mirrorFace, { metalness: 0.6, roughness: 0.25, emissive: '#9aa0a8', emissiveIntensity: 0.55 }), -5 * S))
-      pivot.add(g)
+      body.add(g)
       break
     }
     case 'splitter': {
@@ -210,15 +225,15 @@ export function buildPieceView(p: Piece): PieceView {
       cube.castShadow = false
       cube.rotation.y = Math.PI / 4
       cube.add(edges(cube.geometry, PALETTE.glassEdge))
-      pivot.add(cube)
-      pivot.add(flatOptic(SPLITTER_HALF, '#C9D6E3', null, { faceOpacity: 0.55, emissive: '#7d8fa3' }))
+      body.add(cube)
+      body.add(flatOptic(SPLITTER_HALF, '#C9D6E3', null, { faceOpacity: 0.55, emissive: '#7d8fa3' }))
       break
     }
     case 'filter': {
       const c = colorHex(p.color)
       const mat = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, transparent: true, opacity: 0.55, roughness: 0.3, depthWrite: false })
-      pivot.add(box(4 * S, 0.15, FILTER_HALF * 2 * S, mat))
-      pivot.add(box(8 * S, 0.03, FILTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
+      body.add(box(4 * S, 0.15, FILTER_HALF * 2 * S, mat))
+      body.add(box(8 * S, 0.03, FILTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
       break
     }
     case 'prism':
@@ -252,19 +267,19 @@ export function buildPieceView(p: Piece): PieceView {
     case 'retro': {
       // Dark housing with three corner-cube facets on its face.
       const len = RETRO_HALF * 2 * S
-      pivot.add(box(14 * S, 0.15, len, std('#2C3036', { roughness: 0.5, metalness: 0.3 }), -6 * S))
+      body.add(box(14 * S, 0.15, len, std('#2C3036', { roughness: 0.5, metalness: 0.3 }), -6 * S))
       const facet = std('#C9D3DE', { metalness: 0.7, roughness: 0.2, emissive: '#7d8896', emissiveIntensity: 0.5 })
       for (let i = 0; i < 3; i++) {
         const z = ((i + 0.5) / 3 - 0.5) * len
         const cone = new THREE.Mesh(new THREE.ConeGeometry(8 * S, 6 * S, 3), facet)
         cone.rotation.z = -Math.PI / 2
         cone.position.set(3 * S, 0.075, z)
-        pivot.add(cone)
+        body.add(cone)
       }
       break
     }
     case 'concave': {
-      const pts = concaveLocal(p.focal)
+      const pts = concaveLocal(p.focal, p.scale)
       const face = std(PALETTE.mirrorFace, { roughness: 0.25, metalness: 0.6, emissive: '#9aa0a8', emissiveIntensity: 0.55 })
       const back = std(PALETTE.mirrorBack, { roughness: 0.5, metalness: 0.3 })
       for (let i = 0; i + 1 < pts.length; i++) {
@@ -281,18 +296,18 @@ export function buildPieceView(p: Piece): PieceView {
     }
     case 'dichroic': {
       const c = colorHex(p.color)
-      pivot.add(box(8 * S, 0.03, SPLITTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
-      pivot.add(flatOptic(SPLITTER_HALF, c, null, { faceOpacity: 0.7, emissive: c }))
+      body.add(box(8 * S, 0.03, SPLITTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
+      body.add(flatOptic(SPLITTER_HALF, c, null, { faceOpacity: 0.7, emissive: c }))
       break
     }
     case 'grating':
-      pivot.add(plate('#B7C4FF', 0.45), faceTicks(7, '#E6ECFF'))
+      body.add(plate('#B7C4FF', 0.45), faceTicks(7, '#E6ECFF'))
       break
     case 'polariser':
-      pivot.add(plate('#8A9099', 0.6), p.axis === 'vertical' ? faceLine('#E6E8EB') : faceTicks(6, '#E6E8EB'))
+      body.add(plate('#8A9099', 0.6), p.axis === 'vertical' ? faceLine('#E6E8EB') : faceTicks(6, '#E6E8EB'))
       break
     case 'waveplate':
-      pivot.add(plate('#C58BFF', 0.5))
+      body.add(plate('#C58BFF', 0.5))
       break
     case 'convex-lens':
     case 'concave-lens': {
@@ -317,10 +332,17 @@ export function buildPieceView(p: Piece): PieceView {
     case 'tube': {
       const L = TUBE.length * S
       const W = TUBE.width * S
-      const mat = std('#1B1E22')
-      pivot.add(box(6 * S, 0.14, W, mat, -L / 2 + 3 * S))
-      pivot.add(box(L, 0.14, 6 * S, mat, 0, 0.07, -W / 2 + 3 * S))
-      pivot.add(box(L, 0.14, 6 * S, mat, 0, 0.07, W / 2 - 3 * S))
+      const mat = std('#4A5059', { roughness: 0.45, metalness: 0.5 })
+      const walls = [
+        box(6 * S, 0.14, W, mat, -L / 2 + 3 * S),
+        box(L, 0.14, 6 * S, mat, 0, 0.07, -W / 2 + 3 * S),
+        box(L, 0.14, 6 * S, mat, 0, 0.07, W / 2 - 3 * S),
+      ]
+      for (const w of walls) w.add(edges(w.geometry, '#6E757F'))
+      pivot.add(...walls)
+      // Coloured lips on the mouth show which way the tube faces.
+      const lip = new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color ? colorHex(p.color) : PALETTE.amber).multiplyScalar(0.9) })
+      pivot.add(box(3 * S, 0.012, 6 * S, lip, L / 2 - 1.5 * S, 0.146, -W / 2 + 3 * S), box(3 * S, 0.012, 6 * S, lip, L / 2 - 1.5 * S, 0.146, W / 2 - 3 * S))
       buildSensor(p, pivot, view)
       break
     }
@@ -328,7 +350,7 @@ export function buildPieceView(p: Piece): PieceView {
 
   // Lock badges: a screwed plate for fixed optics, a pin for rotate-only.
   const optic = !['laser', 'receiver', 'wall', 'tube', 'glass', 'gate'].includes(p.type)
-  if (optic && p.lock === 'fixed') {
+  if (optic && p.lock !== 'kit' && !playerCanRotate(p) && !playerCanResize(p)) {
     const plate = box(72 * S, 0.02, 72 * S, std(PALETTE.plate, { roughness: 0.7 }), 0, 0.01)
     plate.castShadow = false
     root.add(plate)

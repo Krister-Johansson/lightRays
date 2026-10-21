@@ -4,8 +4,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { dashedCircle, dotGridTexture, ribbon } from './geometry'
-import { BEAM_Y, buildPieceView, disposeObject, PALETTE, type PieceView, S } from './pieceMeshes'
-import { COLOR_HEX, isSized, PIECE_INFO, toBoard } from './pieces'
+import { BEAM_Y, buildPieceView, disposeObject, PALETTE, type PieceView, S, SENSOR_IDLE } from './pieceMeshes'
+import { baseSpan, collides, COLOR_HEX, isSized, PIECE_INFO, playerCanResize, playerCanRotate, resizable, scaleOf, toBoard } from './pieces'
 import { type LevelDef, type Piece, PieceSchema, type PieceType } from './schema'
 import { isSolved, receivers, trace } from './trace'
 import type { TraceResult } from './types'
@@ -57,6 +57,7 @@ type Drag =
   | { kind: 'move'; id: string; dx: number; dy: number; startX: number; startY: number; moved: boolean; fromTray: boolean }
   | { kind: 'resize'; id: string; hx: -1 | 0 | 1; hy: -1 | 0 | 1; anchor: { x: number; y: number } }
   | { kind: 'pan'; x: number; y: number; moved: boolean }
+  | { kind: 'scale'; id: string; span: number }
 
 type ViewEntry = { view: PieceView; key: string }
 
@@ -290,7 +291,7 @@ export class Game {
 
   /** Adds a new piece of `type` in the middle of the board (palette click). */
   addPiece(type: PieceType) {
-    const piece = this.makePiece(type, this.level.width / 2, this.level.height / 2)
+    const piece = this.freeSpot(this.makePiece(type, this.level.width / 2, this.level.height / 2))
     this.pieces.push(piece)
     this.select(piece.id)
     this.update()
@@ -312,7 +313,10 @@ export class Game {
       const b = this.pointerToBoard(ev)
       const inside = b && this.insideBoard(b.x, b.y)
       if (inside && !placed) {
-        placed = fromTray ? { ...fromTray } : this.makePiece(source as PieceType, b.x, b.y)
+        const candidate = { ...(fromTray ?? this.makePiece(source as PieceType, b.x, b.y)), x: this.snap(b.x), y: this.snap(b.y) }
+        // Only land on free space; keep following the pointer until there is some.
+        if (collides(candidate, this.pieces)) return
+        placed = candidate
         if (fromTray) this.tray = this.tray.filter((p) => p.id !== fromTray.id)
         this.pieces.push(placed)
         this.selected = placed.id
@@ -320,7 +324,11 @@ export class Game {
       }
       if (placed && b) {
         const p = placed
-        this.pieces = this.pieces.map((q) => (q.id === p.id ? { ...q, x: this.snap(b.x), y: this.snap(b.y) } : q))
+        const moved = { ...p, x: this.snap(b.x), y: this.snap(b.y) }
+        if (inside && !collides(moved, this.pieces)) {
+          placed = moved
+          this.pieces = this.pieces.map((q) => (q.id === p.id ? moved : q))
+        }
         if (!inside) {
           // Dragged back off the board: put it away again.
           this.pieces = this.pieces.filter((q) => q.id !== p.id)
@@ -399,7 +407,11 @@ export class Game {
 
   private canRotate(p: Piece) {
     if (!PIECE_INFO[p.type].rotatable) return false
-    return this.mode === 'edit' || p.lock !== 'fixed'
+    return this.mode === 'edit' || playerCanRotate(p)
+  }
+
+  private canResize(p: Piece) {
+    return this.mode === 'edit' ? resizable(p) : playerCanResize(p)
   }
 
   private canMove(p: Piece) {
@@ -419,12 +431,27 @@ export class Game {
     const prefix = type.replace('double-mirror', 'dmirror')
     while (this.pieces.some((p) => p.id === `${prefix}${n}`) || this.tray.some((p) => p.id === `${prefix}${n}`)) n++
     const angle = ['mirror', 'double-mirror', 'splitter', 'dichroic'].includes(type) ? 135 : type === 'tube' || type === 'retro' || type === 'concave' ? 180 : 0
-    const base = { id: `${prefix}${n}`, x: this.snap(x), y: this.snap(y), angle, lock: 'rotate' as const }
+    const base = { id: `${prefix}${n}`, x: this.snap(x), y: this.snap(y), angle, lock: 'fixed' as const }
     // Schema defaults fill in every type-specific field (colour, size, focal length...).
     const piece = PieceSchema.parse({ ...base, type })
-    if (type === 'laser' || type === 'receiver' || type === 'tube' || type === 'wall') piece.lock = 'fixed'
+    // Optics start out turnable by the player; sources, goals and walls stay put.
+    if (!['laser', 'receiver', 'tube', 'wall'].includes(type) && PIECE_INFO[type].rotatable) piece.rotate = true
     if (piece.type === 'wall') piece.h = 120
     return piece
+  }
+
+  /** The nearest grid spot to `p` where it doesn't overlap anything, searching outward in rings. */
+  private freeSpot<T extends Piece>(p: T): T {
+    for (let r = 0; r < 40; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const q = { ...p, x: p.x + dx * SNAP * 2, y: p.y + dy * SNAP * 2 }
+          if (this.insideBoard(q.x, q.y) && !collides(q, this.pieces)) return q
+        }
+      }
+    }
+    return p
   }
 
   private placeFromTray(id: string) {
@@ -432,7 +459,7 @@ export class Game {
     if (!p) return
     // Drop it at its own spot if free, else the board centre.
     this.tray = this.tray.filter((q) => q.id !== id)
-    this.pieces.push({ ...p, x: this.snap(this.level.width / 2), y: this.snap(this.level.height / 2) })
+    this.pieces.push(this.freeSpot({ ...p, x: this.snap(this.level.width / 2), y: this.snap(this.level.height / 2) }))
     this.moves++
     this.select(id)
     this.update()
@@ -688,13 +715,15 @@ export class Game {
     disposeObject(this.handleGroup)
     this.handleGroup.clear()
     const p = this.selected ? this.piece(this.selected) : null
-    if (!p || this.mode !== 'edit' || !isSized(p)) return
+    if (!p || !this.canResize(p)) return
+    // Sized pieces get a box with eight handles; other optics one handle at each end of the face.
+    const sized = isSized(p)
+    const hw = sized ? (p.w + 12) / 2 : 0
+    const hh = sized ? (p.h + 12) / 2 : baseSpan(p) * scaleOf(p) + 12
     const outline: THREE.Vector2[] = []
-    const corners = [
-      [-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1],
-    ]
+    const corners = sized ? [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]] : [[0, -1], [0, 1]]
     for (const [sx, sy] of corners) {
-      const b = toBoard(p, (sx * (p.w + 12)) / 2, (sy * (p.h + 12)) / 2)
+      const b = toBoard(p, sx * hw, sy * hh)
       const w = this.toWorld(b.x, b.y)
       outline.push(new THREE.Vector2(w.x, w.z))
     }
@@ -704,8 +733,8 @@ export class Game {
     this.handleGroup.add(line)
     for (const hx of [-1, 0, 1] as const) {
       for (const hy of [-1, 0, 1] as const) {
-        if (!hx && !hy) continue
-        const b = toBoard(p, (hx * (p.w + 12)) / 2, (hy * (p.h + 12)) / 2)
+        if ((!hx && !hy) || (!sized && (hx || !hy))) continue
+        const b = toBoard(p, hx * hw, hy * hh)
         const g = new THREE.Group()
         g.position.copy(this.toWorld(b.x, b.y, 0.29))
         g.rotation.y = (p.angle * Math.PI) / 180
@@ -855,8 +884,8 @@ export class Game {
         this.litAmount.set(p.id, now)
         if (Math.abs(now - lit) > 0.002) busy = true
         const s = view.sensor
-        s.ring.color.copy(s.color).multiplyScalar(0.42 + (2.2 - 0.42) * now)
-        s.core.color.copy(s.color).multiplyScalar(0.16 + (4 - 0.16) * now)
+        s.ring.color.copy(s.color).multiplyScalar(SENSOR_IDLE.ring + (2.2 - SENSOR_IDLE.ring) * now)
+        s.core.color.copy(s.color).multiplyScalar(SENSOR_IDLE.core + (4 - SENSOR_IDLE.core) * now)
         ;(s.halo.material as THREE.MeshBasicMaterial).opacity = 0.35 * now + 0.5 * this.surge * now
         const pt = this.pulses.get(p.id)
         if (pt !== undefined) {
@@ -1005,9 +1034,12 @@ export class Game {
       this.emit()
     } else if (p.kind === 'resize') {
       const piece = this.piece(this.selected!)!
-      if (!isSized(piece)) return
-      // The opposite edge or corner stays put while dragging.
-      this.drag = { kind: 'resize', id: piece.id, hx: p.hx, hy: p.hy, anchor: toBoard(piece, (-p.hx * piece.w) / 2, (-p.hy * piece.h) / 2) }
+      if (isSized(piece)) {
+        // The opposite edge or corner stays put while dragging.
+        this.drag = { kind: 'resize', id: piece.id, hx: p.hx, hy: p.hy, anchor: toBoard(piece, (-p.hx * piece.w) / 2, (-p.hy * piece.h) / 2) }
+      } else {
+        this.drag = { kind: 'scale', id: piece.id, span: baseSpan(piece) }
+      }
       el.setPointerCapture(e.pointerId)
       this.emit()
     } else if (p.kind === 'piece') {
@@ -1068,6 +1100,8 @@ export class Game {
         if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < SNAP) return
         drag.moved = true
         el.style.cursor = 'grabbing'
+        // Pieces can't overlap: stay at the last free spot. Off the board is allowed (drop to remove).
+        if (this.insideBoard(b.x, b.y) && collides({ ...p, x, y }, this.pieces)) return
         this.setPiece(p.id, { x, y })
       } else if (drag.kind === 'resize' && isSized(p)) {
         // Work in the piece's own frame so rotated glass resizes along its sides.
@@ -1081,7 +1115,17 @@ export class Game {
         const w = drag.hx ? Math.max(SNAP * 2, this.snap(Math.abs(lx))) : p.w
         const h = drag.hy ? Math.max(SNAP * 2, this.snap(Math.abs(ly))) : p.h
         const centre = toBoard({ ...drag.anchor, angle: p.angle }, (drag.hx * w) / 2, (drag.hy * h) / 2)
-        this.setPiece(p.id, { w, h, x: drag.hx ? centre.x : p.x, y: drag.hy ? centre.y : p.y } as Partial<Piece>)
+        const resized = { ...p, w, h, x: drag.hx ? centre.x : p.x, y: drag.hy ? centre.y : p.y }
+        if (collides(resized, this.pieces)) return
+        this.setPiece(p.id, resized)
+      } else if (drag.kind === 'scale') {
+        // Grows symmetrically about the centre; distance along the face sets the scale.
+        const r = (p.angle * Math.PI) / 180
+        const along = Math.abs((b.x - p.x) * Math.sin(r) + (b.y - p.y) * Math.cos(r)) - 12
+        const scale = clamp(Math.round((along / drag.span) * 10) / 10, 0.5, 3)
+        const scaled = { ...p, scale: scale === 1 ? undefined : scale }
+        if (scaleOf(p) === scale || collides(scaled, this.pieces)) return
+        this.setPiece(p.id, scaled)
       }
       this.update()
       return
@@ -1108,6 +1152,7 @@ export class Game {
     if (drag.kind === 'pan') return
     const p = this.piece(drag.id)
     if (drag.kind === 'rotate' && p && p.angle !== drag.startAngle) this.moves++
+    if ((drag.kind === 'scale' || drag.kind === 'resize') && this.mode === 'play') this.moves++
     if (drag.kind === 'move' && p && drag.moved) {
       const b = this.pointerToBoard(e)
       if (!b || !this.insideBoard(b.x, b.y)) {

@@ -148,4 +148,11 @@ describe('trace', () => {
     expect(trace(board([laser(), p1, p2, R])).lit.has('R')).toBe(false)
     expect(trace(board([laser(), p1, { id: 'W', type: 'waveplate', x: 450, y: 300, angle: 0 }, p2, R])).lit.has('R')).toBe(true)
   })
+
+  it('a scaled mirror catches a beam its normal size would miss', () => {
+    const mirror = { id: 'M', type: 'mirror', x: 400, y: 340, angle: 135 }
+    const R = { id: 'R', type: 'receiver', x: 400, y: 80 }
+    expect(trace(board([laser(), mirror, R])).lit.has('R')).toBe(false)
+    expect(trace(board([laser(), { ...mirror, scale: 2 }, R])).hits.has('M')).toBe(true)
+  })
 })

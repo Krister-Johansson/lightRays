@@ -95,7 +95,8 @@ export function toBoard(p: { x: number; y: number; angle: number }, lx: number, 
 
 /** Ends of a flat optic (mirror, splitter, filter): the face runs perpendicular to its angle. */
 export function faceSegment(p: Piece, half: number): [Vec2, Vec2] {
-  return [toBoard(p, 0, -half), toBoard(p, 0, half)]
+  const h = half * scaleOf(p)
+  return [toBoard(p, 0, -h), toBoard(p, 0, h)]
 }
 
 /** Corners of a rectangle piece, counter-clockwise on screen. */
@@ -150,16 +151,22 @@ export function wedgeLocal(): Vec2[] {
 }
 
 /** Points along a concave mirror, vertex at the centre, curving toward the angle. */
-export function concaveLocal(focal: number, steps = 12): Vec2[] {
-  const R = Math.max(focal * 2, CONCAVE_HALF * 1.05)
+export function concaveLocal(focal: number, scale = 1, steps = 12): Vec2[] {
+  const half = CONCAVE_HALF * scale
+  const R = Math.max(focal * 2, half * 1.05)
   return Array.from({ length: steps + 1 }, (_, i) => {
-    const ly = -CONCAVE_HALF + (2 * CONCAVE_HALF * i) / steps
+    const ly = -half + (2 * half * i) / steps
     return { x: R - Math.sqrt(R * R - ly * ly), y: ly }
   })
 }
 
 /** Outline of a polygon piece in its own frame (x along the angle, y down), or null for flat optics. */
 export function localPolygon(p: Piece): Vec2[] | null {
+  const k = scaleOf(p)
+  return unscaledPolygon(p)?.map((v) => ({ x: v.x * k, y: v.y * k })) ?? null
+}
+
+function unscaledPolygon(p: Piece): Vec2[] | null {
   switch (p.type) {
     case 'prism':
       return prismCorners({ x: 0, y: 0, angle: 0 }, p.size)
@@ -183,7 +190,31 @@ export function boardPolygon(p: Piece): Vec2[] | null {
   return localPolygon(p)?.map((v) => toBoard(p, v.x, v.y)) ?? null
 }
 
+/** Size multiplier; pieces without one are 1. */
+export const scaleOf = (p: Piece) => p.scale ?? 1
+
+/** Optics the editor can resize with the end handles: everything but sources, goals and w×h pieces. */
+export const canScale = (p: Piece) => !['laser', 'receiver', 'tube'].includes(p.type) && !isSized(p)
+
+/** Whether the player may turn the piece in play. */
+export const playerCanRotate = (p: Piece) => PIECE_INFO[p.type].rotatable && (p.rotate ?? p.lock !== 'fixed')
+
+/** Whether the piece can be resized at all (editor), and by the player in play. */
+export const resizable = (p: Piece) => isSized(p) || canScale(p)
+export const playerCanResize = (p: Piece) => resizable(p) && !!p.resize
+
+/** Half the piece's length along its face (local y) at scale 1, where the resize handles sit. */
+export function baseSpan(p: Piece): number {
+  return Math.max(...footprint({ ...p, x: 0, y: 0, angle: 0, scale: 1 }).map((v) => Math.abs(v.y)))
+}
+
 export function halfSize(p: Piece): { w: number; h: number } {
+  const k = canScale(p) ? scaleOf(p) : 1
+  const { w, h } = unscaledHalfSize(p)
+  return { w: w * k, h: h * k }
+}
+
+function unscaledHalfSize(p: Piece): { w: number; h: number } {
   switch (p.type) {
     case 'wall':
     case 'glass':
@@ -201,4 +232,70 @@ export function halfSize(p: Piece): { w: number; h: number } {
     default:
       return { w: 32, h: 32 }
   }
+}
+
+/** Convex outline of the space a piece takes up on the board, used to stop pieces overlapping. */
+export function footprint(p: Piece): Vec2[] {
+  // Flat optics grow along their face; the splitter cube grows both ways.
+  const k = scaleOf(p)
+  const rect = (w: number, h: number, ox = 0) => rectCorners({ ...p, ...toBoard(p, ox, 0) }, w, h * k)
+  const poly = boardPolygon(p)
+  if (poly) return poly
+  switch (p.type) {
+    case 'laser':
+      return rect(60, 40, -26)
+    case 'receiver':
+      return Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * Math.PI * 2
+        return { x: p.x + Math.cos(a) * (RECEIVER_R + 2), y: p.y + Math.sin(a) * (RECEIVER_R + 2) }
+      })
+    case 'tube':
+      return rect(TUBE.length, TUBE.width)
+    case 'concave':
+      return rect(24, CONCAVE_HALF * 2, 6)
+    case 'retro':
+      return rect(20, RETRO_HALF * 2, -3)
+    case 'splitter':
+      return rect(SPLITTER_HALF * Math.SQRT2 * k, SPLITTER_HALF * Math.SQRT2)
+    case 'convex-lens':
+    case 'concave-lens':
+      return rect(24, LENS_HALF * 2)
+    case 'double-mirror':
+      return rect(12, MIRROR_HALF * 2)
+    default:
+      return rect(10, Math.max(MIRROR_HALF, PLATE_HALF) * 2)
+  }
+}
+
+/** Separating-axis test for two convex polygons. Touching edges don't count as overlap. */
+export function polygonsOverlap(a: Vec2[], b: Vec2[], tolerance = 0.5): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]
+      const q = poly[(i + 1) % poly.length]
+      const nx = -(q.y - p.y)
+      const ny = q.x - p.x
+      const len = Math.hypot(nx, ny) || 1
+      const project = (vs: Vec2[]) => {
+        let min = Infinity
+        let max = -Infinity
+        for (const v of vs) {
+          const d = (v.x * nx + v.y * ny) / len
+          min = Math.min(min, d)
+          max = Math.max(max, d)
+        }
+        return [min, max]
+      }
+      const [amin, amax] = project(a)
+      const [bmin, bmax] = project(b)
+      if (amax - bmin <= tolerance || bmax - amin <= tolerance) return false
+    }
+  }
+  return true
+}
+
+/** True if `piece` overlaps any of `others` (itself excluded by id). */
+export function collides(piece: Piece, others: Piece[]): boolean {
+  const mine = footprint(piece)
+  return others.some((o) => o.id !== piece.id && polygonsOverlap(mine, footprint(o)))
 }

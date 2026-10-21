@@ -1,15 +1,14 @@
 import { Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Game, GameSnapshot } from '../game/Game'
-import { COLOR_HEX, PIECE_INFO } from '../game/pieces'
+import { canScale, COLOR_HEX, PIECE_INFO, playerCanResize, playerCanRotate, resizable, scaleOf } from '../game/pieces'
 import { COLOR_BITS, type ColorName, type LevelDef, type Piece, type PieceType } from '../game/schema'
 import { Button } from './controls'
 import { PieceIcon } from './PieceIcon'
 
 const LOCKS: { value: Piece['lock']; title: string; detail: string }[] = [
-  { value: 'fixed', title: 'Fixed on the table', detail: "Player can't move or rotate it" },
+  { value: 'fixed', title: 'Fixed on the table', detail: "Starts on the board. Player can't move it" },
   { value: 'kit', title: "In the player's kit", detail: 'Starts in the tray, player places it' },
-  { value: 'rotate', title: 'Fixed position, free rotation', detail: 'Player can only turn it' },
 ]
 
 const COLORS = Object.keys(COLOR_BITS) as ColorName[]
@@ -45,7 +44,14 @@ export function Inspector({ snap, game, meta, onMeta }: Props) {
       </div>
       <p className="m-0 -mt-2 text-sm text-muted">{info.blurb}.</p>
 
-      <LockPicker piece={p} rotatable={info.rotatable} onPick={(lock) => set({ lock })} />
+      <LockPicker piece={p} onPick={(lock) => set({ lock, rotate: playerCanRotate(p) })} />
+
+      {info.rotatable && (
+        <Toggle label="Player can rotate" detail="Shows the dial in play" checked={playerCanRotate(p)} onChange={(v) => set({ rotate: v })} />
+      )}
+      {resizable(p) && (
+        <Toggle label="Player can resize" detail="Shows the size handles in play" checked={playerCanResize(p)} onChange={(v) => set({ resize: v || undefined })} />
+      )}
 
       <Toggle
         label="Must be hit"
@@ -67,26 +73,28 @@ export function Inspector({ snap, game, meta, onMeta }: Props) {
   )
 }
 
-function LockPicker({ piece, rotatable, onPick }: { piece: Piece; rotatable: boolean; onPick: (lock: Piece['lock']) => void }) {
+function LockPicker({ piece, onPick }: { piece: Piece; onPick: (lock: Piece['lock']) => void }) {
+  // "rotate" is the older way to say fixed-but-turnable; it shows as fixed with the rotate toggle on.
+  const current = piece.lock === 'kit' ? 'kit' : 'fixed'
   return (
     <Field label="Who places it">
       <div className="flex flex-col gap-2" role="radiogroup" aria-label="Who places it">
-        {LOCKS.filter((l) => rotatable || l.value !== 'rotate').map((l) => (
+        {LOCKS.map((l) => (
           <button
             type="button"
             role="radio"
-            aria-checked={piece.lock === l.value}
+            aria-checked={current === l.value}
             key={l.value}
             onClick={() => onPick(l.value)}
             className="pressable flex cursor-pointer items-start gap-3 rounded-[10px] border p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-dial"
-            style={{ borderColor: piece.lock === l.value ? '#2F5E8C' : '#23272C', background: piece.lock === l.value ? '#13202d' : '#15171A' }}
+            style={{ borderColor: current === l.value ? '#2F5E8C' : '#23272C', background: current === l.value ? '#13202d' : '#15171A' }}
           >
             <span
               className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2"
-              style={{ borderColor: piece.lock === l.value ? '#4FA8FF' : '#3A3F46' }}
+              style={{ borderColor: current === l.value ? '#4FA8FF' : '#3A3F46' }}
               aria-hidden
             >
-              {piece.lock === l.value && <span className="size-1.5 rounded-full bg-dial" />}
+              {current === l.value && <span className="size-1.5 rounded-full bg-dial" />}
             </span>
             <span className="flex flex-col gap-0.5">
               <span className="text-sm text-fg">{l.title}</span>
@@ -127,9 +135,6 @@ const NUMBER_FIELDS: Partial<Record<PieceType, NumberSpec[]>> = {
   wall: SIZE,
   glass: SIZE,
   gate: SIZE,
-  prism: [{ key: 'size', label: 'Size', step: 10, min: 40 }],
-  'right-prism': [{ key: 'size', label: 'Size', step: 10, min: 40 }],
-  rhomboid: [{ key: 'length', label: 'Shift', step: 10, min: 40 }],
   concave: FOCAL,
   'convex-lens': FOCAL,
   'concave-lens': FOCAL,
@@ -142,6 +147,9 @@ function NumberFields({ piece, rotatable, set }: { piece: Piece; rotatable: bool
   return (
     <div className="grid grid-cols-2 gap-3">
       {rotatable && <NumberField label="Angle °" value={piece.angle} step={1} onChange={(v) => set({ angle: ((v % 360) + 360) % 360 })} />}
+      {canScale(piece) && (
+        <NumberField label="Size ×" value={scaleOf(piece)} step={0.1} min={0.5} max={3} onChange={(v) => set({ scale: v === 1 ? undefined : v })} />
+      )}
       {NUMBER_FIELDS[piece.type]?.map((f) => (
         <NumberField key={f.key} label={f.label} value={values[f.key]} step={f.step} min={f.min} max={f.max} onChange={(v) => set({ [f.key]: v } as Partial<Piece>)} />
       ))}

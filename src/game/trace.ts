@@ -122,7 +122,7 @@ function buildScene(level: LevelDef, pieces: Piece[]) {
       }
       case 'concave': {
         // Short mirror segments along the curve, each facing the centre of curvature.
-        const pts = concaveLocal(p.focal)
+        const pts = concaveLocal(p.focal, p.scale)
         const R = Math.max(p.focal * 2, pts[0].x + 1)
         const c = toBoard(p, R, 0)
         for (let i = 0; i + 1 < pts.length; i++) {

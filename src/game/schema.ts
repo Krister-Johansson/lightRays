@@ -29,6 +29,9 @@ const base = {
     .default('fixed')
     .describe('fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it'),
   mustHit: z.boolean().optional().describe('A beam must touch this piece for the level to count as solved'),
+  rotate: z.boolean().optional().describe('Player can turn it. Left out: true for "rotate" and "kit" pieces, false for "fixed"'),
+  resize: z.boolean().optional().describe('Player can resize it in play. Left out: false'),
+  scale: z.number().min(0.5).max(3).optional().describe('Size multiplier for optics (mirror length, prism size...). 1 when left out'),
 }
 
 export const PieceSchema = z.discriminatedUnion('type', [
@@ -72,7 +75,7 @@ export type Piece = z.infer<typeof PieceSchema>
 export type PieceType = Piece['type']
 export type PieceOf<T extends PieceType> = Extract<Piece, { type: T }>
 
-export const PlacementSchema = z.object({ x: z.number(), y: z.number(), angle })
+export const PlacementSchema = z.object({ x: z.number(), y: z.number(), angle, scale: z.number().min(0.5).max(3).optional() })
 export type Placement = z.infer<typeof PlacementSchema>
 
 export const LevelSchema = z

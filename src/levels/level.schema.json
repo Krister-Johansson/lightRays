@@ -69,6 +69,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "laser"
@@ -128,6 +142,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "mirror"
@@ -174,6 +202,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -222,6 +264,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "splitter"
@@ -268,6 +324,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -320,6 +390,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -377,6 +461,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -438,6 +536,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "receiver"
@@ -496,6 +608,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -562,6 +688,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "wall"
@@ -618,6 +758,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "retro"
@@ -664,6 +818,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -716,6 +884,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -777,6 +959,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "grating"
@@ -830,6 +1026,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "right-prism"
@@ -881,6 +1091,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -934,6 +1158,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "wedge"
@@ -980,6 +1218,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -1033,6 +1285,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "concave-lens"
@@ -1084,6 +1350,20 @@
               "mustHit": {
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
               },
               "type": {
                 "type": "string",
@@ -1155,6 +1435,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "polariser"
@@ -1210,6 +1504,20 @@
                 "description": "A beam must touch this piece for the level to count as solved",
                 "type": "boolean"
               },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
               "type": {
                 "type": "string",
                 "const": "waveplate"
@@ -1245,6 +1553,11 @@
             "type": "number",
             "minimum": 0,
             "exclusiveMaximum": 360
+          },
+          "scale": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 3
           }
         },
         "required": [
