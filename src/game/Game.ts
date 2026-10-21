@@ -114,7 +114,8 @@ export class Game {
   // Unlock sequence: a bright pulse races down the solved beam, then the receiver bursts.
   private solved = false
   private unlocked = false
-  private unlockT = 1
+  /** Seconds into the unlock sequence; Infinity when it isn't playing. */
+  private unlockT = Infinity
   private surge = 0
   private beamPath: { pts: THREE.Vector2[]; lengths: number[]; total: number } = { pts: [], lengths: [], total: 0 }
   private cometGroup = new THREE.Group()
@@ -191,7 +192,7 @@ export class Game {
     this.wasLit = false
     this.pulseT = 1
     this.solved = this.unlocked = false
-    this.unlockT = 1
+    this.unlockT = Infinity
     this.surge = 0
     this.buildLevel()
     this.update()
@@ -556,9 +557,9 @@ export class Game {
     const solved = isSolved(this.level, this.result)
     if (solved && !this.solved) {
       this.unlockT = 0
-      this.unlocked = prefersReducedMotion()
+      this.unlocked = false
     } else if (!solved) {
-      this.unlockT = 1
+      this.unlockT = Infinity
       this.unlocked = false
       disposeChildren(this.cometGroup)
     }
@@ -774,27 +775,29 @@ export class Game {
   }
 
   /**
-   * Plays the unlock: a comet of light runs from the laser to the receiver, then the
-   * receiver bursts and the whole beam surges brighter before settling.
+   * Plays the unlock: a comet of light runs at constant speed from the laser into the
+   * receiver and keeps flowing in until its tail is gone. As its head lands, the receiver
+   * bursts and the whole beam surges brighter before settling.
    */
   private animateUnlock(dt: number, reduced: boolean) {
-    const TRAVEL = 0.65
+    const SPEED = 1500 * S // board px per second; constant so the light never slows down
     const BURST = 0.7
-    const DURATION = TRAVEL + BURST
-    if (this.unlockT >= 1 && this.surge < 0.002) return false
+    if (!Number.isFinite(this.unlockT) && this.surge < 0.002) return false
 
-    if (this.unlockT < 1) {
-      this.unlockT = reduced ? 1 : Math.min(1, this.unlockT + dt / DURATION)
-      const t = this.unlockT * DURATION
+    if (Number.isFinite(this.unlockT)) {
+      const { total } = this.beamPath
+      const len = Math.max(140 * S, total * 0.2)
+      const arrival = total / SPEED
+      const end = Math.max((total + len) / SPEED, arrival + BURST)
+      this.unlockT = reduced ? end : this.unlockT + dt
+      const t = this.unlockT
       disposeChildren(this.cometGroup)
 
-      if (t < TRAVEL) {
-        // Ease-in-out so the pulse accelerates off the emitter and lands softly.
-        const p = t / TRAVEL
-        const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
-        const head = e * this.beamPath.total
-        const tail = Math.max(0, head - Math.max(120 * S, this.beamPath.total * 0.18))
-        const sub = this.subPath(tail, head)
+      const head = t * SPEED
+      const tail = head - len
+      if (tail < total) {
+        // The receiver swallows the comet: clip it at the beam's end instead of stopping.
+        const sub = this.subPath(Math.max(0, tail), Math.min(head, total))
         const color = new THREE.Color(this.level.laser.color)
         for (const [w, c, o] of [
           [16, color.clone().multiplyScalar(1.4), 0.6],
@@ -807,26 +810,26 @@ export class Game {
           mesh.position.y = BEAM_Y + 0.002
           this.cometGroup.add(mesh)
         }
-      } else if (!this.unlocked) {
+      }
+
+      if (t >= arrival && !this.unlocked) {
         this.unlocked = true
         this.surge = 1
-        this.pulseT = 0
+        this.pulseT = reduced ? 1 : 0
         this.emit()
       }
 
-      // Burst ring expands out of the receiver after the comet lands.
-      const b = Math.max(0, (t - TRAVEL) / BURST)
+      // Burst ring expands out of the receiver as the comet lands.
+      const b = (t - arrival) / BURST
       const bm = this.burst.material as THREE.MeshBasicMaterial
-      if (b > 0 && b < 1) {
+      if (b > 0 && b < 1 && !reduced) {
         const k = easeOut(b)
         this.burst.scale.setScalar(1 + k * 4)
         bm.opacity = 1 - k
       } else {
         bm.opacity = 0
       }
-    } else if (!this.unlocked) {
-      this.unlocked = true
-      this.emit()
+      if (t >= end) this.unlockT = Infinity
     }
 
     // Beam surge decays back to normal.
