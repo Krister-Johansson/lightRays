@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { DialOverlay } from './components/DialOverlay'
+import { FinishButton } from './components/FinishButton'
 import { Hud } from './components/Hud'
 import { KitTray } from './components/KitTray'
-import { LevelComplete } from './components/LevelComplete'
 import { Game, type GameSnapshot } from './game/Game'
 import { LEVELS } from './game/levels'
 
@@ -26,9 +26,10 @@ export default function App() {
   }, [game, levelIndex])
 
   const snap: GameSnapshot | null = useSyncExternalStore(game?.subscribe ?? noop, game?.getSnapshot ?? empty)
-  const showWin = useSettledWin(snap)
-
   const goTo = (i: number) => setLevelIndex((i + LEVELS.length) % LEVELS.length)
+  const isLast = levelIndex === LEVELS.length - 1
+  // After the last level, finishing loops back to the first.
+  const finish = useCallback(() => setLevelIndex((i) => (i + 1) % LEVELS.length), [])
 
   return (
     <div className="relative h-full w-full select-none">
@@ -44,35 +45,11 @@ export default function App() {
             onReset={() => game?.reset()}
           />
           <DialOverlay dial={snap.dial} />
-          <KitTray snap={snap} />
-          {showWin && (
-            <LevelComplete
-              snap={snap}
-              hasNext={levelIndex < LEVELS.length - 1}
-              onNext={() => goTo(levelIndex + 1)}
-              onReplay={() => game?.reset()}
-            />
-          )}
+          <KitTray snap={snap}>
+            <FinishButton unlocked={snap.unlocked} isLast={isLast} beam={snap.level.laser.color} onFinish={finish} />
+          </KitTray>
         </>
       )}
     </div>
   )
-}
-
-/**
- * Shows the win card only once the puzzle is solved and the player has let go,
- * after a short beat so the receiver's light-up pulse is seen first.
- */
-function useSettledWin(snap: GameSnapshot | null) {
-  const [show, setShow] = useState(false)
-  const ready = !!snap && snap.solved && !snap.dragging
-  useEffect(() => {
-    if (!ready) return
-    const t = setTimeout(() => setShow(true), 450)
-    return () => {
-      clearTimeout(t)
-      setShow(false)
-    }
-  }, [ready, snap?.level])
-  return show && ready
 }

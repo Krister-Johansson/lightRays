@@ -26,7 +26,8 @@ npm run lint     # oxlint
 - Drag the blue handle to rotate. Keep it close for 5° steps, drag it past the first dashed
   ring for 1° steps and past the outer ring for 0.1° steps. Hold Shift to snap to 15°.
 - Keyboard: Tab cycles mirrors, arrow keys nudge 1° (Shift 15°, Alt 0.1°), Esc deselects.
-- Light the receiver. Mirrors outlined with an amber diamond must be part of the beam's path.
+- Light the receiver: a pulse of light runs down the beam, the receiver bursts and the
+  **Finish round** button unlocks (or press Enter) to move on. Mirrors outlined with an amber diamond must be part of the beam's path.
   Mirrors on a screwed plate are fixed.
 
 ## Code layout
@@ -37,7 +38,7 @@ npm run lint     # oxlint
 | `src/game/levels.ts` | Level data in board pixels (1120 × 620 board). |
 | `src/game/levels.test.ts` | Brute-forces every level to prove it's solvable and not pre-solved. |
 | `src/game/Game.ts` | three.js scene, bloom, rotation dial, input and render-on-demand loop. |
-| `src/components/` | React HUD: top bar, dial labels, kit tray, level-complete card. |
+| `src/components/` | React HUD: top bar, dial angle readout, kit tray, finish-round button. |
 
 The scene only renders when something changes or an animation is running, so an idle board
 costs nothing.

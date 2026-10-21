@@ -33,8 +33,6 @@ const DIAL = { inner: 48, fine: 110, finest: 180, minArm: 60, maxArm: 240, defau
 const BEAM_Y = 0.07
 const DIAL_Y = 0.004
 
-export type DialLabel = { x: number; y: number; text: string }
-
 export type GameSnapshot = {
   level: LevelDef
   angles: Record<string, number>
@@ -42,9 +40,11 @@ export type GameSnapshot = {
   dragging: boolean
   lit: boolean
   solved: boolean
+  /** True once the unlock light has reached the receiver; the finish button opens then. */
+  unlocked: boolean
   mustHit: { hit: number; total: number }
   moves: number
-  dial: { x: number; y: number; deg: string; step: string; ringLabels: DialLabel[] } | null
+  dial: { x: number; y: number; deg: string; step: string } | null
 }
 
 /** Rotation step for a handle at the given distance, per the design. */
@@ -111,6 +111,14 @@ export class Game {
   private dialTarget = 0
   private pulseT = 1
   private wasLit = false
+  // Unlock sequence: a bright pulse races down the solved beam, then the receiver bursts.
+  private solved = false
+  private unlocked = false
+  private unlockT = 1
+  private surge = 0
+  private beamPath: { pts: THREE.Vector2[]; lengths: number[]; total: number } = { pts: [], lengths: [], total: 0 }
+  private cometGroup = new THREE.Group()
+  private burst!: THREE.Mesh
 
   private container: HTMLElement
 
@@ -146,7 +154,7 @@ export class Game {
     sun.shadow.bias = -0.0005
     this.scene.add(sun)
 
-    this.scene.add(this.levelGroup, this.beamGroup, this.dialGroup)
+    this.scene.add(this.levelGroup, this.beamGroup, this.cometGroup, this.dialGroup)
     this.buildDial()
 
     const el = this.renderer.domElement
@@ -182,6 +190,9 @@ export class Game {
     this.litAmount = 0
     this.wasLit = false
     this.pulseT = 1
+    this.solved = this.unlocked = false
+    this.unlockT = 1
+    this.surge = 0
     this.buildLevel()
     this.update()
     this.resize()
@@ -369,7 +380,15 @@ export class Game {
     pulse.rotation.x = -Math.PI / 2
     pulse.position.y = 0.163
 
-    g.add(housing, ring, core, halo, pulse)
+    const burst = new THREE.Mesh(
+      new THREE.RingGeometry(r * S, (r + 6) * S, 64),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(this.level.laser.color).multiplyScalar(2), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
+    )
+    burst.rotation.x = -Math.PI / 2
+    burst.position.y = 0.004
+    this.burst = burst
+
+    g.add(housing, ring, core, halo, pulse, burst)
     this.levelGroup.add(g)
     this.receiver = { ring: ringMat, core: coreMat, halo, pulse }
   }
@@ -534,6 +553,16 @@ export class Game {
       m.pivot.rotation.y = (this.angles[id] * Math.PI) / 180
     }
     this.result = trace(this.level, this.angles)
+    const solved = isSolved(this.level, this.result)
+    if (solved && !this.solved) {
+      this.unlockT = 0
+      this.unlocked = prefersReducedMotion()
+    } else if (!solved) {
+      this.unlockT = 1
+      this.unlocked = false
+      disposeChildren(this.cometGroup)
+    }
+    this.solved = solved
     this.buildBeam()
     this.updateDial()
     this.emit()
@@ -559,8 +588,12 @@ export class Game {
         }),
       )
       mesh.position.y = y
+      mesh.material.userData.base = c.clone()
       this.beamGroup.add(mesh)
     }
+    const lengths = [0]
+    for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + pts[i].distanceTo(pts[i - 1]))
+    this.beamPath = { pts, lengths, total: lengths[lengths.length - 1] }
     // Light spill on the board, then the beam itself: coloured body and a hot white core.
     layer(22, color.clone().multiplyScalar(0.12), 1, 0.002)
     layer(5, color.clone().multiplyScalar(0.9), 0.85, BEAM_Y)
@@ -608,16 +641,10 @@ export class Game {
       const arm = this.arms[sel]
       const step = stepFor(arm, this.shift)
       const label = this.toScreen(m.x + Math.cos(a) * (arm + 52), m.y - Math.sin(a) * (arm + 52))
-      // Ring labels sit opposite the handle so the angle readout never covers them.
-      const ring = (r: number, text: string) => {
-        const p = this.toScreen(m.x - Math.cos(a) * (r + 8), m.y + Math.sin(a) * (r + 8))
-        return { ...p, text }
-      }
       dial = {
         ...label,
         deg: this.angles[sel].toFixed(1) + '°',
         step: this.shift ? 'snap 15°' : `${step}° steps`,
-        ringLabels: [ring(DIAL.inner + 12, '5°'), ring(DIAL.fine, '1° steps'), ring(DIAL.finest, '0.1° steps')],
       }
     }
     const must = this.level.mirrors.filter((m) => m.mustHit)
@@ -627,7 +654,8 @@ export class Game {
       selected: sel,
       dragging: this.dragging,
       lit: this.result.lit,
-      solved: isSolved(this.level, this.result),
+      solved: this.solved,
+      unlocked: this.unlocked,
       mustHit: { hit: must.filter((m) => this.result.hits.has(m.id)).length, total: must.length },
       moves: this.moves,
       dial,
@@ -729,6 +757,8 @@ export class Game {
       busy = true
     }
 
+    busy = this.animateUnlock(dt, reduced) || busy
+
     // Must-hit outline turns solid once the beam bounces off it.
     for (const [id, m] of this.mirrors) {
       if (!m.mustRing) continue
@@ -741,6 +771,91 @@ export class Game {
       if (Math.abs(sm.opacity - hit) > 0.002) busy = true
     }
     return busy
+  }
+
+  /**
+   * Plays the unlock: a comet of light runs from the laser to the receiver, then the
+   * receiver bursts and the whole beam surges brighter before settling.
+   */
+  private animateUnlock(dt: number, reduced: boolean) {
+    const TRAVEL = 0.65
+    const BURST = 0.7
+    const DURATION = TRAVEL + BURST
+    if (this.unlockT >= 1 && this.surge < 0.002) return false
+
+    if (this.unlockT < 1) {
+      this.unlockT = reduced ? 1 : Math.min(1, this.unlockT + dt / DURATION)
+      const t = this.unlockT * DURATION
+      disposeChildren(this.cometGroup)
+
+      if (t < TRAVEL) {
+        // Ease-in-out so the pulse accelerates off the emitter and lands softly.
+        const p = t / TRAVEL
+        const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
+        const head = e * this.beamPath.total
+        const tail = Math.max(0, head - Math.max(120 * S, this.beamPath.total * 0.18))
+        const sub = this.subPath(tail, head)
+        const color = new THREE.Color(this.level.laser.color)
+        for (const [w, c, o] of [
+          [16, color.clone().multiplyScalar(1.4), 0.6],
+          [5, new THREE.Color(1, 1, 1).multiplyScalar(4), 1],
+        ] as const) {
+          const mesh = new THREE.Mesh(
+            ribbon(sub, w * S, { joints: true }),
+            new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+          )
+          mesh.position.y = BEAM_Y + 0.002
+          this.cometGroup.add(mesh)
+        }
+      } else if (!this.unlocked) {
+        this.unlocked = true
+        this.surge = 1
+        this.pulseT = 0
+        this.emit()
+      }
+
+      // Burst ring expands out of the receiver after the comet lands.
+      const b = Math.max(0, (t - TRAVEL) / BURST)
+      const bm = this.burst.material as THREE.MeshBasicMaterial
+      if (b > 0 && b < 1) {
+        const k = easeOut(b)
+        this.burst.scale.setScalar(1 + k * 4)
+        bm.opacity = 1 - k
+      } else {
+        bm.opacity = 0
+      }
+    } else if (!this.unlocked) {
+      this.unlocked = true
+      this.emit()
+    }
+
+    // Beam surge decays back to normal.
+    this.surge = approach(this.surge, 0, dt, 0.35)
+    const boost = 1 + this.surge * 1.8
+    for (const child of this.beamGroup.children) {
+      const mat = (child as THREE.Mesh).material as THREE.MeshBasicMaterial
+      const base = mat.userData.base as THREE.Color | undefined
+      if (base) mat.color.copy(base).multiplyScalar(boost)
+    }
+    ;(this.receiver.halo.material as THREE.MeshBasicMaterial).opacity = 0.35 * this.litAmount + 0.5 * this.surge
+    return true
+  }
+
+  /** Slice of the current beam polyline between two arc lengths. */
+  private subPath(from: number, to: number) {
+    const { pts, lengths } = this.beamPath
+    const at = (d: number) => {
+      let i = 1
+      while (i < lengths.length - 1 && lengths[i] < d) i++
+      const seg = lengths[i] - lengths[i - 1] || 1
+      return { i, p: pts[i - 1].clone().lerp(pts[i], (d - lengths[i - 1]) / seg) }
+    }
+    const a = at(from)
+    const b = at(to)
+    const out = [a.p]
+    for (let i = a.i; i < b.i; i++) out.push(pts[i])
+    out.push(b.p)
+    return out
   }
 
   // ---------------------------------------------------------------- input

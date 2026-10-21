@@ -76,7 +76,58 @@ body {
   }
 }
 
+/* Finish button: muted while locked, lights up in the beam colour once unlocked. */
+.finish-button {
+  border: 1px solid var(--color-line-strong);
+  background-color: var(--color-panel);
+  color: var(--color-faint);
+  transition:
+    transform 160ms var(--ease-out-strong),
+    background-color 240ms var(--ease-out-strong),
+    color 240ms var(--ease-out-strong),
+    border-color 240ms var(--ease-out-strong),
+    box-shadow 240ms var(--ease-out-strong);
+}
+.finish-button[data-unlocked='true'] {
+  border-color: var(--beam);
+  background-color: var(--beam);
+  color: var(--color-amber-ink);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--beam) 40%, transparent),
+    0 0 28px color-mix(in srgb, var(--beam) 45%, transparent);
+  animation: finish-glow 900ms var(--ease-out-strong);
+}
+/* One sweep of light across the button as it unlocks. */
+.finish-button[data-unlocked='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.75) 50%, transparent 70%);
+  transform: translateX(-110%);
+  animation: finish-sweep 700ms 80ms var(--ease-out-strong) forwards;
+  pointer-events: none;
+}
+.finish-button:disabled:active {
+  transform: none;
+}
+@keyframes finish-sweep {
+  to {
+    transform: translateX(110%);
+  }
+}
+@keyframes finish-glow {
+  0% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--beam) 40%, transparent),
+      0 0 60px color-mix(in srgb, var(--beam) 90%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .finish-button[data-unlocked='true'],
+  .finish-button[data-unlocked='true']::after {
+    animation: none;
+  }
   .pressable:active {
     transform: none;
   }
