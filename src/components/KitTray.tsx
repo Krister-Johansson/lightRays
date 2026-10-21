@@ -1,7 +1,7 @@
 import { Lock } from 'lucide-react'
 import type { GameSnapshot } from '../game/Game'
 
-/** Bottom tray: what's in this level's kit, plus the control hint. */
+/** Bottom tray: what's in this level's kit, plus whatever action sits beside it. */
 export function KitTray({ snap, children }: { snap: GameSnapshot; children?: React.ReactNode }) {
   return (
     <footer className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[112px] items-center justify-center gap-4 px-4 sm:px-8">
@@ -39,10 +39,6 @@ export function KitTray({ snap, children }: { snap: GameSnapshot; children?: Rea
         })}
       </div>
       {children}
-      <p className="absolute right-8 bottom-10 hidden w-[240px] text-right text-xs leading-normal text-faint lg:block">
-        Click a mirror, then drag the handle. Drag it further out for finer steps, hold Shift to snap to 15°. Arrow keys
-        nudge 1°, Tab cycles mirrors.
-      </p>
     </footer>
   )
 }

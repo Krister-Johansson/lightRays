@@ -123,7 +123,35 @@ body {
   }
 }
 
+/* Help popover grows out of its (?) button in the top-right corner. */
+.help-popover {
+  transform-origin: top right;
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong),
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
+}
+.help-popover:popover-open {
+  opacity: 1;
+  transform: scale(1);
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .help-popover {
+    transform: none;
+  }
+  .help-popover:popover-open {
+    @starting-style {
+      transform: none;
+    }
+  }
   .finish-button[data-unlocked='true'],
   .finish-button[data-unlocked='true']::after {
     animation: none;

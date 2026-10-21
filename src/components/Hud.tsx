@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
 import type { GameSnapshot } from '../game/Game'
+import { HelpPopover } from './HelpPopover'
 
 type Props = {
   snap: GameSnapshot
@@ -22,7 +23,7 @@ export function Hud({ snap, levelIndex, levelCount, onPrev, onNext, onReset }: P
           <ChevronRight className="size-5" aria-hidden />
         </IconButton>
       </div>
-      <span className="font-mono text-[13px] text-muted">{snap.level.id}</span>
+      <span className="font-mono text-[13px] whitespace-nowrap text-muted">{snap.level.id}</span>
       <h1 className="m-0 truncate text-[22px] font-semibold">{snap.level.name}</h1>
       <div className="flex-1" />
 
@@ -63,7 +64,8 @@ export function Hud({ snap, levelIndex, levelCount, onPrev, onNext, onReset }: P
         </Pill>
       </div>
 
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto flex items-center gap-2">
+        <HelpPopover />
         <IconButton label="Reset level" onClick={onReset}>
           <RotateCcw className="size-[18px]" aria-hidden />
         </IconButton>

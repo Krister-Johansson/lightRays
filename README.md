@@ -26,6 +26,7 @@ npm run lint     # oxlint
 - Drag the blue handle to rotate. Keep it close for 5° steps, drag it past the first dashed
   ring for 1° steps and past the outer ring for 0.1° steps. Hold Shift to snap to 15°.
 - Keyboard: Tab cycles mirrors, arrow keys nudge 1° (Shift 15°, Alt 0.1°), Esc deselects.
+- The (?) button in the top bar shows all controls.
 - Light the receiver: a pulse of light runs down the beam, the receiver bursts and the
   **Finish round** button unlocks (or press Enter) to move on. Mirrors outlined with an amber diamond must be part of the beam's path.
   Mirrors on a screwed plate are fixed.
