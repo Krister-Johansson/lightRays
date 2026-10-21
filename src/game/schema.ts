@@ -46,6 +46,26 @@ export const PieceSchema = z.discriminatedUnion('type', [
     .object({ ...base, type: z.literal('tube'), color: colorName.optional(), cone: z.number().positive().max(45).default(8) })
     .describe('Lit only by a beam entering the tube mouth within ±cone degrees'),
   z.object({ ...base, type: z.literal('wall'), w: z.number().positive().default(60), h: z.number().positive().default(60) }),
+  z.object({ ...base, type: z.literal('retro') }).describe('Corner cube: sends a beam straight back, mirrored across its centre'),
+  z
+    .object({ ...base, type: z.literal('concave'), focal: z.number().positive().default(100) })
+    .describe('Curved mirror: parallel beams meet at the focus, `focal` px in front'),
+  z.object({ ...base, type: z.literal('dichroic'), color: colorName.default('blue') }).describe('Reflects its colour, lets the rest through'),
+  z
+    .object({ ...base, type: z.literal('grating'), spread: z.number().positive().max(80).default(25) })
+    .describe('Splits a beam in three: straight on and ±spread degrees'),
+  z.object({ ...base, type: z.literal('right-prism'), size: z.number().positive().default(70) }).describe('45-45-90 glass: turns a beam 90°, or U-turns it'),
+  z.object({ ...base, type: z.literal('rhomboid'), length: z.number().positive().default(100) }).describe('Periscope in glass: shifts a beam sideways'),
+  z.object({ ...base, type: z.literal('wedge') }).describe('Thin glass wedge: bends a beam by about 10°'),
+  z.object({ ...base, type: z.literal('convex-lens'), focal: z.number().positive().default(150) }).describe('Bends beams toward its focus'),
+  z.object({ ...base, type: z.literal('concave-lens'), focal: z.number().positive().default(150) }).describe('Spreads beams apart'),
+  z
+    .object({ ...base, type: z.literal('gate'), color: colorName.default('red'), w: z.number().positive().default(20), h: z.number().positive().default(100) })
+    .describe('Colour gate: beams made only of its colour pass, anything else is blocked'),
+  z
+    .object({ ...base, type: z.literal('polariser'), axis: z.enum(['vertical', 'horizontal']).default('vertical') })
+    .describe('Polarises light; blocks light polarised the other way'),
+  z.object({ ...base, type: z.literal('waveplate') }).describe('Turns polarisation 90°'),
 ])
 
 export type Piece = z.infer<typeof PieceSchema>

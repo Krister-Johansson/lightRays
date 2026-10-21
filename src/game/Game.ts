@@ -5,8 +5,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { dashedCircle, dotGridTexture, ribbon } from './geometry'
 import { BEAM_Y, buildPieceView, disposeObject, PALETTE, type PieceView, S } from './pieceMeshes'
-import { COLOR_HEX, PIECE_INFO, toBoard } from './pieces'
-import type { LevelDef, Piece, PieceType } from './schema'
+import { COLOR_HEX, isSized, PIECE_INFO, toBoard } from './pieces'
+import { type LevelDef, type Piece, PieceSchema, type PieceType } from './schema'
 import { isSolved, receivers, trace } from './trace'
 import type { TraceResult } from './types'
 
@@ -15,6 +15,7 @@ const SNAP = 10
 const BACKGROUND = '#0C0D0F'
 
 // Dial radii in board pixels (from the approved design).
+const ZOOM = { min: 0.7, max: 3 }
 const DIAL = { inner: 48, fine: 110, finest: 180, minArm: 60, maxArm: 240, defaultArm: 80 }
 const DIAL_Y = 0.004
 
@@ -34,7 +35,9 @@ export type GameSnapshot = {
   unlocked: boolean
   mustHit: { hit: number; total: number }
   moves: number
-  dial: { x: number; y: number; deg: string; step: string } | null
+  dial: { x: number; y: number; deg: string } | null
+  /** Camera zoom, 1 = whole board fits. */
+  zoom: number
 }
 
 /** Rotation step for a handle at the given distance, per the design. */
@@ -53,6 +56,7 @@ type Drag =
   | { kind: 'rotate'; id: string; startAngle: number }
   | { kind: 'move'; id: string; dx: number; dy: number; startX: number; startY: number; moved: boolean; fromTray: boolean }
   | { kind: 'resize'; id: string; hx: -1 | 0 | 1; hy: -1 | 0 | 1; anchor: { x: number; y: number } }
+  | { kind: 'pan'; x: number; y: number; moved: boolean }
 
 type ViewEntry = { view: PieceView; key: string }
 
@@ -61,7 +65,7 @@ export class Game {
   private composer: EffectComposer
   private bloom: UnrealBloomPass
   private scene = new THREE.Scene()
-  private camera = new THREE.PerspectiveCamera(24, 1, 0.1, 200)
+  private camera = new THREE.PerspectiveCamera(24, 1, 1, 200)
   private raycaster = new THREE.Raycaster()
   private boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -DIAL_Y)
   private resizeObserver: ResizeObserver
@@ -96,6 +100,13 @@ export class Game {
   private hovered: string | null = null
   private drag: Drag | null = null
   private shift = false
+  // Camera: `fit` frames the whole board; zoom and pan (world units) are layered on top.
+  private fit = { dist: 10, offset: 0 }
+  private zoom = 1
+  private pan = { x: 0, z: 0 }
+  // Shared uniforms for the beam shimmer.
+  private beamTime = { value: 0 }
+  private shimmer = { value: 0.1 }
   private moves = 0
   private result!: TraceResult
   private snapshot!: GameSnapshot
@@ -126,7 +137,7 @@ export class Game {
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 })
     this.composer = new EffectComposer(this.renderer, target)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.35, 1.0)
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.3, 1.0)
     this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())
 
@@ -150,6 +161,8 @@ export class Game {
     el.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointercancel', this.onPointerUp)
     el.addEventListener('pointerleave', this.onPointerLeave)
+    el.addEventListener('wheel', this.onWheel, { passive: false })
+    el.addEventListener('contextmenu', this.onContextMenu)
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
 
@@ -182,7 +195,11 @@ export class Game {
     this.solved = this.unlocked = false
     this.unlockT = Infinity
     this.surge = 0
-    if (!sameBoard) this.buildBoard()
+    if (!sameBoard) {
+      this.buildBoard()
+      this.zoom = 1
+      this.pan = { x: 0, z: 0 }
+    }
     for (const { view } of this.views.values()) {
       this.pieceGroup.remove(view.root)
       disposeObject(view.root)
@@ -198,6 +215,40 @@ export class Game {
 
   setInsets(top: number, bottom: number) {
     this.insets = { top, bottom }
+    this.resize()
+  }
+
+  /** Zooms by `factor`, keeping the board point under (clientX, clientY) still, or the view centre. */
+  zoomBy(factor: number, at?: { clientX: number; clientY: number }) {
+    const before = at && this.pointerToBoard(at)
+    this.zoom = clamp(this.zoom * factor, ZOOM.min, ZOOM.max)
+    this.applyCamera()
+    const after = at && this.pointerToBoard(at)
+    if (before && after) {
+      this.pan.x += (before.x - after.x) * S
+      this.pan.z += (before.y - after.y) * S
+      this.applyCamera()
+    }
+    this.emit()
+    this.requestFrame()
+  }
+
+  /** Back to the whole board in view. */
+  resetView() {
+    this.zoom = 1
+    this.pan = { x: 0, z: 0 }
+    this.applyCamera()
+    this.emit()
+    this.requestFrame()
+  }
+
+  /** Changes the board size (sandbox). Pieces outside the new edge are pulled back in. */
+  setBoardSize(width: number, height: number) {
+    this.level = { ...this.level, width, height }
+    this.pieces = this.pieces.map((p) => ({ ...p, x: clamp(p.x, 0, width), y: clamp(p.y, 0, height) }))
+    this.buildBoard()
+    this.resetView()
+    this.update()
     this.resize()
   }
 
@@ -367,25 +418,13 @@ export class Game {
     let n = 1
     const prefix = type.replace('double-mirror', 'dmirror')
     while (this.pieces.some((p) => p.id === `${prefix}${n}`) || this.tray.some((p) => p.id === `${prefix}${n}`)) n++
-    const base = { id: `${prefix}${n}`, x: this.snap(x), y: this.snap(y), angle: type === 'mirror' || type === 'double-mirror' || type === 'splitter' ? 135 : 0, lock: 'rotate' as const }
-    switch (type) {
-      case 'laser':
-        return { ...base, type, color: 'yellow', lock: 'fixed' }
-      case 'prism':
-        return { ...base, type, size: 90 }
-      case 'glass':
-        return { ...base, type, w: 100, h: 60 }
-      case 'filter':
-        return { ...base, type, color: 'red' }
-      case 'receiver':
-        return { ...base, type, lock: 'fixed' }
-      case 'tube':
-        return { ...base, type, cone: 8, angle: 180, lock: 'fixed' }
-      case 'wall':
-        return { ...base, type, w: 60, h: 120, lock: 'fixed' }
-      default:
-        return { ...base, type } as Piece
-    }
+    const angle = ['mirror', 'double-mirror', 'splitter', 'dichroic'].includes(type) ? 135 : type === 'tube' || type === 'retro' || type === 'concave' ? 180 : 0
+    const base = { id: `${prefix}${n}`, x: this.snap(x), y: this.snap(y), angle, lock: 'rotate' as const }
+    // Schema defaults fill in every type-specific field (colour, size, focal length...).
+    const piece = PieceSchema.parse({ ...base, type })
+    if (type === 'laser' || type === 'receiver' || type === 'tube' || type === 'wall') piece.lock = 'fixed'
+    if (piece.type === 'wall') piece.h = 120
+    return piece
   }
 
   private placeFromTray(id: string) {
@@ -550,38 +589,67 @@ export class Game {
     this.requestFrame()
   }
 
+  /**
+   * Additive beam material with a slow shimmer flowing away from the laser. `soft` feathers the
+   * ribbon toward its edges (higher is softer) so wide glow layers have no hard border.
+   */
+  private beamMaterial(params: THREE.MeshBasicMaterialParameters, soft = 0) {
+    const mat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      ...params,
+    })
+    if (soft > 0) mat.defines = { FEATHER: soft.toFixed(2) }
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.beamTime
+      shader.uniforms.uShimmer = this.shimmer
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aDist;\nattribute float aAcross;\nvarying float vDist;\nvarying float vAcross;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDist = aDist;\nvAcross = aAcross;')
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uShimmer;\nvarying float vDist;\nvarying float vAcross;')
+        .replace(
+          'vec4 diffuseColor = vec4( diffuse, opacity );',
+          `vec4 diffuseColor = vec4( diffuse, opacity );
+          float flow = 0.6 * sin(vDist * 0.03 - uTime * 2.2) + 0.4 * sin(vDist * 0.011 - uTime * 0.8 + 1.7);
+          diffuseColor.rgb *= 1.0 + uShimmer * flow;
+          #ifdef FEATHER
+            diffuseColor.rgb *= pow(clamp(1.0 - abs(vAcross), 0.0, 1.0), FEATHER);
+          #endif`,
+        )
+    }
+    return mat
+  }
+
   private buildBeams() {
     disposeObject(this.beamGroup)
     this.beamGroup.clear()
-    const byMask = new Map<number, THREE.Vector2[]>()
+    const byMask = new Map<number, { pts: THREE.Vector2[]; dist: number[] }>()
     for (const s of this.result.segments) {
       const a = this.toWorld(s.x1, s.y1)
       const b = this.toWorld(s.x2, s.y2)
-      const list = byMask.get(s.mask) ?? []
-      list.push(new THREE.Vector2(a.x, a.z), new THREE.Vector2(b.x, b.z))
-      byMask.set(s.mask, list)
+      const entry = byMask.get(s.mask) ?? { pts: [], dist: [] }
+      entry.pts.push(new THREE.Vector2(a.x, a.z), new THREE.Vector2(b.x, b.z))
+      entry.dist.push(s.d0, s.d1)
+      byMask.set(s.mask, entry)
     }
-    for (const [mask, pts] of byMask) {
+    for (const [mask, { pts, dist }] of byMask) {
       const color = new THREE.Color(COLOR_HEX[mask])
-      const layer = (width: number, c: THREE.Color, opacity: number, y: number) => {
-        const mat = new THREE.MeshBasicMaterial({
-          color: c,
-          transparent: true,
-          opacity,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-          side: THREE.DoubleSide,
-        })
+      const layer = (width: number, c: THREE.Color, opacity: number, y: number, soft: number, extra: THREE.MeshBasicMaterialParameters = {}) => {
+        const mat = this.beamMaterial({ color: c, opacity, ...extra }, soft)
         mat.userData.base = c.clone()
-        const mesh = new THREE.Mesh(ribbon(pts, width * S, { joints: true, pairs: true }), mat)
+        const mesh = new THREE.Mesh(ribbon(pts, width * S, { joints: true, pairs: true, dist }), mat)
         mesh.position.y = y
         this.beamGroup.add(mesh)
       }
-      // Light spill on the board, then the beam itself: coloured body and a hot white core.
-      layer(22, color.clone().multiplyScalar(0.12), 1, 0.002)
-      layer(5, color.clone().multiplyScalar(0.9), 0.85, BEAM_Y)
-      layer(2.4, color.clone().multiplyScalar(1.8), 1, BEAM_Y + 0.0005)
-      layer(1, new THREE.Color(1, 1, 1).multiplyScalar(1.6), 1, BEAM_Y + 0.001)
+      // Soft light spill on the board, then the beam itself: feathered coloured body and a warm
+      // core. The spill is pulled toward the camera in depth so it never z-fights with the board.
+      layer(26, color.clone().multiplyScalar(0.16), 1, 0.004, 2, { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })
+      layer(7, color.clone().multiplyScalar(0.8), 1, BEAM_Y, 1.2)
+      layer(2.4, color.clone().multiplyScalar(1.1), 1, BEAM_Y + 0.0005, 0)
+      layer(0.9, color.clone().lerp(new THREE.Color(1, 1, 1), 0.6).multiplyScalar(1.1), 1, BEAM_Y + 0.001, 0)
     }
     // Impact flares where beams stop on something other than a receiver.
     for (const s of this.result.segments) {
@@ -589,8 +657,8 @@ export class Game {
       const ends = this.result.segments.some((o) => o !== s && Math.abs(o.x1 - s.x2) < 0.01 && Math.abs(o.y1 - s.y2) < 0.01)
       if (ends) continue
       const flare = new THREE.Mesh(
-        new THREE.CircleGeometry(6 * S, 20),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(COLOR_HEX[s.mask]).multiplyScalar(2.5), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+        new THREE.CircleGeometry(5 * S, 20),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(COLOR_HEX[s.mask]).multiplyScalar(1.8), transparent: true, depthWrite: false, side: THREE.DoubleSide }),
       )
       flare.rotation.x = -Math.PI / 2
       flare.position.copy(end)
@@ -620,7 +688,7 @@ export class Game {
     disposeObject(this.handleGroup)
     this.handleGroup.clear()
     const p = this.selected ? this.piece(this.selected) : null
-    if (!p || this.mode !== 'edit' || (p.type !== 'wall' && p.type !== 'glass')) return
+    if (!p || this.mode !== 'edit' || !isSized(p)) return
     const outline: THREE.Vector2[] = []
     const corners = [
       [-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1],
@@ -660,14 +728,10 @@ export class Game {
     const sel = this.selected ? (this.piece(this.selected) ?? null) : null
     let dial: GameSnapshot['dial'] = null
     if (sel && this.canRotate(sel) && this.renderer.domElement.clientWidth > 0 && !(this.drag?.kind === 'move')) {
+      // Readout sits opposite the handle so it never covers it.
       const a = (sel.angle * Math.PI) / 180
-      const arm = this.arms[sel.id] ?? DIAL.defaultArm
-      const step = stepFor(arm, this.shift)
-      dial = {
-        ...this.toScreen(sel.x + Math.cos(a) * (arm + 52), sel.y - Math.sin(a) * (arm + 52)),
-        deg: sel.angle.toFixed(1) + '°',
-        step: this.shift ? 'snap 15°' : `${step}° steps`,
-      }
+      const r = DIAL.inner + 62
+      dial = { ...this.toScreen(sel.x - Math.cos(a) * r, sel.y + Math.sin(a) * r), deg: sel.angle.toFixed(1) + '°' }
     }
     const goals = receivers(this.pieces)
     const must = [...this.pieces, ...this.tray].filter((p) => p.mustHit)
@@ -684,6 +748,7 @@ export class Game {
       mustHit: { hit: must.filter((m) => this.result.hits.has(m.id)).length, total: must.length },
       moves: this.moves,
       dial,
+      zoom: this.zoom,
     }
     this.listeners.forEach((fn) => fn())
   }
@@ -699,24 +764,36 @@ export class Game {
     this.bloom.setSize(w, h)
     this.camera.aspect = w / h
 
-    // Slight tilt: camera sits ~14° off vertical, toward the player.
-    const tilt = (14 * Math.PI) / 180
     const reserveTop = this.insets.top
     const reserveBottom = this.insets.bottom
-    const boardW = (this.level.width + 80) * S
-    const boardH = (this.level.height + 60) * S
+    const boardW = (this.level.width + 40) * S
+    const boardH = (this.level.height + 40) * S
     const availH = Math.max(0.3, (h - reserveTop - reserveBottom) / h)
     const vFov = (this.camera.fov * Math.PI) / 180
     const distH = boardH / availH / 2 / Math.tan(vFov / 2)
     const distW = boardW / 2 / (Math.tan(vFov / 2) * this.camera.aspect)
     const dist = Math.max(distH, distW) * 1.02
     // Shift the look target so the board sits between the HUD bars.
-    const offset = ((reserveBottom - reserveTop) / h) * dist * Math.tan(vFov / 2)
-    this.camera.position.set(0, Math.cos(tilt) * dist, Math.sin(tilt) * dist + offset)
-    this.camera.lookAt(new THREE.Vector3(0, 0, offset))
-    this.camera.updateProjectionMatrix()
+    this.fit = { dist, offset: ((reserveBottom - reserveTop) / h) * dist * Math.tan(vFov / 2) }
+    this.applyCamera()
     this.emit()
     this.requestFrame()
+  }
+
+  private applyCamera() {
+    // Slight tilt: camera sits ~14° off vertical, toward the player.
+    const tilt = (14 * Math.PI) / 180
+    const dist = this.fit.dist / this.zoom
+    // Keep the view centre over the board.
+    const hw = (this.level.width / 2) * S
+    const hh = (this.level.height / 2) * S
+    this.pan.x = clamp(this.pan.x, -hw, hw)
+    this.pan.z = clamp(this.pan.z, -hh, hh)
+    const tx = this.pan.x
+    const tz = this.fit.offset / this.zoom + this.pan.z
+    this.camera.position.set(tx, Math.cos(tilt) * dist, Math.sin(tilt) * dist + tz)
+    this.camera.lookAt(new THREE.Vector3(tx, 0, tz))
+    this.camera.updateProjectionMatrix()
   }
 
   private requestFrame() {
@@ -738,6 +815,13 @@ export class Game {
   private animate(dt: number) {
     const reduced = prefersReducedMotion()
     let busy = false
+
+    // Beams shimmer gently while there is light on the board.
+    this.shimmer.value = reduced ? 0 : 0.1
+    if (!reduced && this.result.segments.length) {
+      this.beamTime.value += dt
+      busy = true
+    }
 
     // Dial: 180ms ease-out in, 120ms out (exits are faster than entrances).
     const dialTarget = this.drag?.kind === 'move' ? 0 : this.dialTarget
@@ -903,8 +987,15 @@ export class Game {
   }
 
   private onPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0) return
     const el = this.renderer.domElement
+    // Middle or right drag pans from anywhere.
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault()
+      this.drag = { kind: 'pan', x: e.clientX, y: e.clientY, moved: false }
+      el.setPointerCapture(e.pointerId)
+      return
+    }
+    if (e.button !== 0) return
     const p = this.pick(e)
     if (p.kind === 'handle') {
       const piece = this.piece(this.selected!)!
@@ -914,7 +1005,7 @@ export class Game {
       this.emit()
     } else if (p.kind === 'resize') {
       const piece = this.piece(this.selected!)!
-      if (piece.type !== 'wall' && piece.type !== 'glass') return
+      if (!isSized(piece)) return
       // The opposite edge or corner stays put while dragging.
       this.drag = { kind: 'resize', id: piece.id, hx: p.hx, hy: p.hy, anchor: toBoard(piece, (-p.hx * piece.w) / 2, (-p.hy * piece.h) / 2) }
       el.setPointerCapture(e.pointerId)
@@ -930,13 +1021,33 @@ export class Game {
         }
       }
     } else {
+      // Empty board: a click deselects, a drag pans.
       this.select(null)
+      this.drag = { kind: 'pan', x: e.clientX, y: e.clientY, moved: false }
+      el.setPointerCapture(e.pointerId)
     }
   }
 
   private onPointerMove = (e: PointerEvent) => {
     const drag = this.drag
     const el = this.renderer.domElement
+    if (drag?.kind === 'pan') {
+      const dx = e.clientX - drag.x
+      const dy = e.clientY - drag.y
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return
+      drag.moved = true
+      el.style.cursor = 'grabbing'
+      // World units per screen pixel at the board plane.
+      const k = (2 * (this.fit.dist / this.zoom) * Math.tan((this.camera.fov * Math.PI) / 360)) / el.clientHeight
+      this.pan.x -= dx * k
+      this.pan.z -= dy * k
+      drag.x = e.clientX
+      drag.y = e.clientY
+      this.applyCamera()
+      this.emit()
+      this.requestFrame()
+      return
+    }
     if (drag) {
       const b = this.pointerToBoard(e)
       if (!b) return
@@ -958,7 +1069,7 @@ export class Game {
         drag.moved = true
         el.style.cursor = 'grabbing'
         this.setPiece(p.id, { x, y })
-      } else if (drag.kind === 'resize' && (p.type === 'wall' || p.type === 'glass')) {
+      } else if (drag.kind === 'resize' && isSized(p)) {
         // Work in the piece's own frame so rotated glass resizes along its sides.
         const r = (p.angle * Math.PI) / 180
         const c = Math.cos(r)
@@ -994,6 +1105,7 @@ export class Game {
     const el = this.renderer.domElement
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
     el.style.cursor = 'default'
+    if (drag.kind === 'pan') return
     const p = this.piece(drag.id)
     if (drag.kind === 'rotate' && p && p.angle !== drag.startAngle) this.moves++
     if (drag.kind === 'move' && p && drag.moved) {
@@ -1014,6 +1126,15 @@ export class Game {
     }
     this.update()
   }
+
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    // Trackpad pinches arrive as ctrl+wheel with small deltas; mouse wheels with large ones.
+    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+    this.zoomBy(Math.exp(-delta * (e.ctrlKey ? 0.01 : 0.0015)), e)
+  }
+
+  private onContextMenu = (e: MouseEvent) => e.preventDefault()
 
   private onPointerLeave = () => {
     if (this.hovered) {
@@ -1038,6 +1159,12 @@ export class Game {
       if (!this.selected) return
       e.preventDefault()
       this.nudge(-step)
+    } else if (e.key === '+' || e.key === '=') {
+      this.zoomBy(1.2)
+    } else if (e.key === '-' || e.key === '_') {
+      this.zoomBy(1 / 1.2)
+    } else if (e.key === '0') {
+      this.resetView()
     } else if (e.key === 'Escape') {
       this.select(null)
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.mode === 'edit' && this.selected) {

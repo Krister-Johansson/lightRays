@@ -32,16 +32,16 @@ export function MenuScreen() {
           <MenuLink href="#/levels">Level select</MenuLink>
           <MenuLink href="#/sandbox">Sandbox</MenuLink>
         </nav>
-      </main>
-      <div className="absolute bottom-14 left-6 flex items-center gap-4 font-mono text-[13px] text-muted sm:left-[120px]">
-        <span>Chapter 1 · Reflection</span>
-        <div className="h-1 w-40 rounded-sm bg-[#23272C]">
-          <div className="h-1 rounded-sm bg-amber transition-[width] duration-300 ease-out" style={{ width: `${(done / LEVELS.length) * 100}%` }} />
+        <div className="enter-rise mt-4 flex items-center gap-4 font-mono text-[13px] text-muted" style={{ transitionDelay: '160ms' }}>
+          <span>Chapter 1 · Reflection</span>
+          <div className="h-1 w-40 rounded-sm bg-[#23272C]">
+            <div className="h-1 rounded-sm bg-amber transition-[width] duration-300 ease-out" style={{ width: `${(done / LEVELS.length) * 100}%` }} />
+          </div>
+          <span>
+            {done} / {LEVELS.length}
+          </span>
         </div>
-        <span>
-          {done} / {LEVELS.length}
-        </span>
-      </div>
+      </main>
     </div>
   )
 }

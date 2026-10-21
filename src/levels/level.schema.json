@@ -583,6 +583,645 @@
               "y",
               "type"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "retro"
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Corner cube: sends a beam straight back, mirrored across its centre"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "concave"
+              },
+              "focal": {
+                "default": 100,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Curved mirror: parallel beams meet at the focus, `focal` px in front"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "dichroic"
+              },
+              "color": {
+                "default": "blue",
+                "type": "string",
+                "enum": [
+                  "red",
+                  "green",
+                  "blue",
+                  "yellow",
+                  "magenta",
+                  "cyan",
+                  "white"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Reflects its colour, lets the rest through"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "grating"
+              },
+              "spread": {
+                "default": 25,
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 80
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Splits a beam in three: straight on and ±spread degrees"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "right-prism"
+              },
+              "size": {
+                "default": 70,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "45-45-90 glass: turns a beam 90°, or U-turns it"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "rhomboid"
+              },
+              "length": {
+                "default": 100,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Periscope in glass: shifts a beam sideways"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "wedge"
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Thin glass wedge: bends a beam by about 10°"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "convex-lens"
+              },
+              "focal": {
+                "default": 150,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Bends beams toward its focus"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "concave-lens"
+              },
+              "focal": {
+                "default": 150,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Spreads beams apart"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "gate"
+              },
+              "color": {
+                "default": "red",
+                "type": "string",
+                "enum": [
+                  "red",
+                  "green",
+                  "blue",
+                  "yellow",
+                  "magenta",
+                  "cyan",
+                  "white"
+                ]
+              },
+              "w": {
+                "default": 20,
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "h": {
+                "default": 100,
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Colour gate: beams made only of its colour pass, anything else is blocked"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "polariser"
+              },
+              "axis": {
+                "default": "vertical",
+                "type": "string",
+                "enum": [
+                  "vertical",
+                  "horizontal"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Polarises light; blocks light polarised the other way"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "waveplate"
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Turns polarisation 90°"
           }
         ]
       }

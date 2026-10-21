@@ -2,7 +2,7 @@ import { Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Game, GameSnapshot } from '../game/Game'
 import { COLOR_HEX, PIECE_INFO } from '../game/pieces'
-import { COLOR_BITS, type ColorName, type LevelDef, type Piece } from '../game/schema'
+import { COLOR_BITS, type ColorName, type LevelDef, type Piece, type PieceType } from '../game/schema'
 import { Button } from './controls'
 import { PieceIcon } from './PieceIcon'
 
@@ -14,6 +14,12 @@ const LOCKS: { value: Piece['lock']; title: string; detail: string }[] = [
 
 const COLORS = Object.keys(COLOR_BITS) as ColorName[]
 
+const BOARD_SIZES = [
+  { label: 'Standard', width: 1120, height: 620 },
+  { label: 'Large', width: 1440, height: 800 },
+  { label: 'Huge', width: 1760, height: 980 },
+]
+
 type Props = {
   snap: GameSnapshot
   game: Game
@@ -24,7 +30,7 @@ type Props = {
 /** Sandbox right panel: properties of the selected piece, or the level when nothing is selected. */
 export function Inspector({ snap, game, meta, onMeta }: Props) {
   const p = snap.selected
-  if (!p) return <LevelPanel snap={snap} meta={meta} onMeta={onMeta} />
+  if (!p) return <LevelPanel snap={snap} game={game} meta={meta} onMeta={onMeta} />
   const info = PIECE_INFO[p.type]
   const set = (patch: Partial<Piece>) => game.updatePiece(p.id, patch)
 
@@ -49,6 +55,8 @@ export function Inspector({ snap, game, meta, onMeta }: Props) {
       />
 
       <ColorField piece={p} onChange={(color) => set({ color } as Partial<Piece>)} />
+
+      <AxisField piece={p} set={set} />
 
       <NumberFields piece={p} rotatable={info.rotatable} set={set} />
 
@@ -92,7 +100,7 @@ function LockPicker({ piece, rotatable, onPick }: { piece: Piece; rotatable: boo
 }
 
 function ColorField({ piece, onChange }: { piece: Piece; onChange: (color: ColorName | undefined) => void }) {
-  if (piece.type !== 'laser' && piece.type !== 'filter' && piece.type !== 'receiver' && piece.type !== 'tube') return null
+  if (!('color' in piece) && piece.type !== 'receiver' && piece.type !== 'tube') return null
   const goal = piece.type === 'receiver' || piece.type === 'tube'
   return (
     <Field label={goal ? 'Needs colour' : 'Colour'}>
@@ -106,23 +114,65 @@ function ColorField({ piece, onChange }: { piece: Piece; onChange: (color: Color
   )
 }
 
+type NumberSpec = { key: string; label: string; step: number; min: number; max?: number }
+
+const SIZE: NumberSpec[] = [
+  { key: 'w', label: 'Width', step: 10, min: 20 },
+  { key: 'h', label: 'Height', step: 10, min: 20 },
+]
+const FOCAL: NumberSpec[] = [{ key: 'focal', label: 'Focal length', step: 10, min: 40, max: 600 }]
+
+/** Type-specific number fields, besides the angle. */
+const NUMBER_FIELDS: Partial<Record<PieceType, NumberSpec[]>> = {
+  wall: SIZE,
+  glass: SIZE,
+  gate: SIZE,
+  prism: [{ key: 'size', label: 'Size', step: 10, min: 40 }],
+  'right-prism': [{ key: 'size', label: 'Size', step: 10, min: 40 }],
+  rhomboid: [{ key: 'length', label: 'Shift', step: 10, min: 40 }],
+  concave: FOCAL,
+  'convex-lens': FOCAL,
+  'concave-lens': FOCAL,
+  grating: [{ key: 'spread', label: 'Spread °', step: 1, min: 5, max: 80 }],
+  tube: [{ key: 'cone', label: 'Cone ±°', step: 1, min: 1, max: 45 }],
+}
+
 function NumberFields({ piece, rotatable, set }: { piece: Piece; rotatable: boolean; set: (patch: Partial<Piece>) => void }) {
+  const values = piece as unknown as Record<string, number>
   return (
     <div className="grid grid-cols-2 gap-3">
       {rotatable && <NumberField label="Angle °" value={piece.angle} step={1} onChange={(v) => set({ angle: ((v % 360) + 360) % 360 })} />}
-      {(piece.type === 'wall' || piece.type === 'glass') && (
-        <>
-          <NumberField label="Width" value={piece.w} step={10} min={20} onChange={(w) => set({ w } as Partial<Piece>)} />
-          <NumberField label="Height" value={piece.h} step={10} min={20} onChange={(h) => set({ h } as Partial<Piece>)} />
-        </>
-      )}
-      {piece.type === 'prism' && <NumberField label="Size" value={piece.size} step={10} min={40} onChange={(size) => set({ size } as Partial<Piece>)} />}
-      {piece.type === 'tube' && <NumberField label="Cone ±°" value={piece.cone} step={1} min={1} max={45} onChange={(cone) => set({ cone } as Partial<Piece>)} />}
+      {NUMBER_FIELDS[piece.type]?.map((f) => (
+        <NumberField key={f.key} label={f.label} value={values[f.key]} step={f.step} min={f.min} max={f.max} onChange={(v) => set({ [f.key]: v } as Partial<Piece>)} />
+      ))}
     </div>
   )
 }
 
-function LevelPanel({ snap, meta, onMeta }: Omit<Props, 'game'>) {
+function AxisField({ piece, set }: { piece: Piece; set: (patch: Partial<Piece>) => void }) {
+  if (piece.type !== 'polariser') return null
+  return (
+    <Field label="Polarisation">
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Polarisation">
+        {(['vertical', 'horizontal'] as const).map((axis) => (
+          <button
+            key={axis}
+            type="button"
+            role="radio"
+            aria-checked={piece.axis === axis}
+            onClick={() => set({ axis } as Partial<Piece>)}
+            className="pressable h-10 cursor-pointer rounded-[10px] border text-sm text-fg capitalize outline-none focus-visible:ring-2 focus-visible:ring-dial"
+            style={{ borderColor: piece.axis === axis ? '#2F5E8C' : '#23272C', background: piece.axis === axis ? '#13202d' : '#15171A' }}
+          >
+            {axis === 'vertical' ? '| Vertical' : '— Horizontal'}
+          </button>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
+function LevelPanel({ snap, game, meta, onMeta }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -149,6 +199,29 @@ function LevelPanel({ snap, meta, onMeta }: Omit<Props, 'game'>) {
         </Field>
         <NumberField label="Par moves" value={meta.par} step={1} min={0} onChange={(par) => onMeta({ par })} />
       </div>
+      <Field label="Board size">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Board size">
+          {BOARD_SIZES.map((b) => {
+            const on = snap.level.width === b.width && snap.level.height === b.height
+            return (
+              <button
+                key={b.label}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => game.setBoardSize(b.width, b.height)}
+                className="pressable flex h-12 cursor-pointer flex-col items-center justify-center rounded-[10px] border text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-dial"
+                style={{ borderColor: on ? '#2F5E8C' : '#23272C', background: on ? '#13202d' : '#15171A' }}
+              >
+                <span>{b.label}</span>
+                <span className="font-mono text-[10px] text-muted">
+                  {b.width}×{b.height}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </Field>
       <dl className="m-0 grid grid-cols-2 gap-2 text-sm">
         <Stat label="Receivers lit" value={`${snap.goals.lit} / ${snap.goals.total}`} />
         <Stat label="Pieces" value={String(snap.pieces.length)} />

@@ -1,14 +1,17 @@
 import { CircleHelp } from 'lucide-react'
 
 const MOUSE: [string, string][] = [
-  ['Click a mirror', 'Select it and show the rotation dial'],
+  ['Click a piece', 'Select it and show the rotation dial'],
   ['Drag the handle', 'Rotate. Further out means finer steps: 5°, 1°, 0.1°'],
+  ['Scroll', 'Zoom in and out'],
+  ['Drag the board', 'Pan (or right-drag anywhere)'],
 ]
 
 const KEYS: [string, string][] = [
   ['Shift', 'Snap to 15° while dragging'],
   ['← →', 'Nudge 1° (Shift 15°, Alt 0.1°)'],
-  ['Tab', 'Next mirror'],
+  ['Tab', 'Next piece'],
+  ['+ − 0', 'Zoom in, out, fit the board'],
   ['Esc', 'Deselect'],
   ['Enter', 'Finish round once it unlocks'],
 ]

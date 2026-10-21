@@ -3,6 +3,7 @@ import { DialOverlay } from '../components/DialOverlay'
 import { FinishButton } from '../components/FinishButton'
 import { Hud } from '../components/Hud'
 import { KitTray } from '../components/KitTray'
+import { ZoomControls } from '../components/ZoomControls'
 import { colorHex } from '../game/pieces'
 import type { LevelDef } from '../game/schema'
 import { useGame } from '../lib/useGame'
@@ -40,6 +41,7 @@ export function PlayScreen({ level, backLabel, finishLabel, onBack, onFinish, on
         <>
           <Hud snap={snap} backLabel={backLabel} onBack={onBack} onReset={() => game.reset()} />
           <DialOverlay dial={snap.dial} />
+          <ZoomControls game={game} zoom={snap.zoom} className="absolute top-[92px] right-4 sm:right-6" />
           <KitTray snap={snap} game={game}>
             <FinishButton unlocked={unlocked} label={finishLabel} beam={beamHex} onFinish={finish} />
           </KitTray>

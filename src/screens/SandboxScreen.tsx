@@ -5,6 +5,7 @@ import { DialOverlay } from '../components/DialOverlay'
 import { HelpPopover } from '../components/HelpPopover'
 import { Inspector } from '../components/Inspector'
 import { Palette } from '../components/Palette'
+import { ZoomControls } from '../components/ZoomControls'
 import { applyPlacements, toPlayable } from '../game/levelTools'
 import { type LevelDef, parseLevel, serializeLevel } from '../game/schema'
 import { go } from '../lib/route'
@@ -39,7 +40,7 @@ export function SandboxScreen() {
 
   useEffect(() => {
     if (!game) return
-    game.setInsets(24, 24)
+    game.setInsets(12, 12)
     game.load(initial, 'edit')
   }, [game, initial])
 
@@ -148,19 +149,20 @@ export function SandboxScreen() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-[232px] shrink-0 overflow-y-auto border-r border-[#1F2227] bg-panel-2 p-4 md:block">
+        <aside className="hidden w-[212px] shrink-0 overflow-y-auto border-r border-[#1F2227] bg-panel-2 p-4 md:block">
           {game && <Palette game={game} />}
         </aside>
         <main className="relative min-w-0 flex-1">
           <div ref={ref} className="absolute inset-0" />
           {snap && <DialOverlay dial={snap.dial} />}
+          {snap && game && <ZoomControls game={game} zoom={snap.zoom} className="absolute right-4 bottom-4" />}
           {notice && (
             <div role="status" className="enter-pop absolute bottom-4 left-1/2 max-w-[90%] -translate-x-1/2 rounded-xl border border-line-strong bg-card px-4 py-2.5 text-sm text-fg shadow-[0_12px_32px_rgb(0_0_0/0.45)]">
               {notice}
             </div>
           )}
         </main>
-        <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l border-[#1F2227] bg-panel-2 p-5 lg:block">
+        <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-l border-[#1F2227] bg-panel-2 p-5 lg:block">
           {game && snap && <Inspector snap={snap} game={game} meta={meta} onMeta={(patch) => setMeta((m) => ({ ...m, ...patch }))} />}
         </aside>
       </div>

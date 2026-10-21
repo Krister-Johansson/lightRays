@@ -1,11 +1,14 @@
 import {
+  boardPolygon,
+  concaveLocal,
   degToDir,
   faceSegment,
   FILTER_HALF,
+  LENS_HALF,
   MIRROR_HALF,
-  prismCorners,
+  PLATE_HALF,
   RECEIVER_R,
-  rectCorners,
+  RETRO_HALF,
   SPLITTER_HALF,
   TUBE,
   toBoard,
@@ -18,10 +21,24 @@ const MAX_DEPTH = 48
 const EPS = 1e-6
 
 /** Refractive index per colour bit. Exaggerated so prisms fan colours out visibly. */
-const PRISM_N: Record<number, number> = { [COLOR_BITS.red]: 1.46, [COLOR_BITS.green]: 1.56, [COLOR_BITS.blue]: 1.68 }
+const PRISM_N: Record<number, number> = { [COLOR_BITS.red]: 1.44, [COLOR_BITS.green]: 1.56, [COLOR_BITS.blue]: 1.7 }
 const GLASS_N = 1.5
 
-type SurfaceKind = 'mirror' | 'double' | 'split' | 'filter' | 'absorb' | 'refract' | 'tube-wall'
+type SurfaceKind =
+  | 'mirror'
+  | 'double'
+  | 'split'
+  | 'filter'
+  | 'absorb'
+  | 'refract'
+  | 'tube-wall'
+  | 'retro'
+  | 'dichroic'
+  | 'grating'
+  | 'lens'
+  | 'gate'
+  | 'polariser'
+  | 'waveplate'
 
 type Surface = {
   a: Vec2
@@ -43,6 +60,8 @@ type Ray = {
   mask: number
   /** Piece whose glass the ray is travelling through, if any. */
   medium: Piece | null
+  /** Polarisation: 0 none, 1 vertical, 2 horizontal. */
+  pol: 0 | 1 | 2
   d0: number
   depth: number
   from: Surface | null
@@ -91,14 +110,53 @@ function buildScene(level: LevelDef, pieces: Piece[]) {
         surfaces.push({ a, b, kind: 'filter', piece: p, n: degToDir(p.angle), filterMask: COLOR_BITS[p.color] })
         break
       }
-      case 'prism':
-        surfaces.push(...polygonSurfaces(prismCorners(p, p.size), 'refract', p))
+      case 'dichroic': {
+        const [a, b] = faceSegment(p, SPLITTER_HALF)
+        surfaces.push({ a, b, kind: 'dichroic', piece: p, n: degToDir(p.angle), filterMask: COLOR_BITS[p.color] })
         break
+      }
+      case 'retro': {
+        const [a, b] = faceSegment(p, RETRO_HALF)
+        surfaces.push({ a, b, kind: 'retro', piece: p, n: degToDir(p.angle) })
+        break
+      }
+      case 'concave': {
+        // Short mirror segments along the curve, each facing the centre of curvature.
+        const pts = concaveLocal(p.focal)
+        const R = Math.max(p.focal * 2, pts[0].x + 1)
+        const c = toBoard(p, R, 0)
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = toBoard(p, pts[i].x, pts[i].y)
+          const b = toBoard(p, pts[i + 1].x, pts[i + 1].y)
+          surfaces.push({ a, b, kind: 'mirror', piece: p, n: unit(sub(c, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })) })
+        }
+        break
+      }
+      case 'grating':
+      case 'polariser':
+      case 'waveplate': {
+        const [a, b] = faceSegment(p, PLATE_HALF)
+        surfaces.push({ a, b, kind: p.type, piece: p, n: degToDir(p.angle) })
+        break
+      }
+      case 'convex-lens':
+      case 'concave-lens': {
+        const [a, b] = faceSegment(p, LENS_HALF)
+        surfaces.push({ a, b, kind: 'lens', piece: p, n: degToDir(p.angle) })
+        break
+      }
+      case 'prism':
       case 'glass':
-        surfaces.push(...polygonSurfaces(rectCorners(p, p.w, p.h), 'refract', p))
+      case 'right-prism':
+      case 'rhomboid':
+      case 'wedge':
+        surfaces.push(...polygonSurfaces(boardPolygon(p)!, 'refract', p))
+        break
+      case 'gate':
+        surfaces.push(...polygonSurfaces(boardPolygon(p)!, 'gate', p).map((s) => ({ ...s, filterMask: COLOR_BITS[p.color] })))
         break
       case 'wall':
-        surfaces.push(...polygonSurfaces(rectCorners(p, p.w, p.h), 'absorb', p))
+        surfaces.push(...polygonSurfaces(boardPolygon(p)!, 'absorb', p))
         break
       case 'receiver':
         sensors.push({ piece: p, c: { x: p.x, y: p.y }, r: RECEIVER_R })
@@ -157,7 +215,7 @@ export function trace(level: LevelDef, pieces: Piece[] = level.pieces): TraceRes
   for (const p of pieces) {
     if (p.type !== 'laser') continue
     const d = degToDir(p.angle)
-    queue.push({ x: p.x, y: p.y, dx: d.x, dy: d.y, mask: COLOR_BITS[p.color], medium: null, d0: 0, depth: 0, from: null })
+    queue.push({ x: p.x, y: p.y, dx: d.x, dy: d.y, mask: COLOR_BITS[p.color], medium: null, pol: 0, d0: 0, depth: 0, from: null })
   }
 
   while (queue.length && segments.length < MAX_SEGMENTS) {
@@ -237,6 +295,60 @@ export function trace(level: LevelDef, pieces: Piece[] = level.pieces): TraceRes
         if (mask) next(ray.dx, ray.dy, { mask })
         break
       }
+      case 'dichroic': {
+        const reflected = ray.mask & hit.filterMask!
+        const passed = ray.mask & ~hit.filterMask!
+        if (reflected) next(ray.dx - 2 * dot * hit.n.x, ray.dy - 2 * dot * hit.n.y, { mask: reflected })
+        if (passed) next(ray.dx, ray.dy, { mask: passed })
+        break
+      }
+      case 'gate':
+        // Only beams made entirely of the gate's colour get through, unbent.
+        if ((ray.mask & ~hit.filterMask!) === 0) next(ray.dx, ray.dy)
+        break
+      case 'retro': {
+        // Corner cube: the beam comes back antiparallel, mirrored across the centre.
+        if (dot >= 0) break
+        const p = hit.piece!
+        const ox = 2 * p.x - x
+        const oy = 2 * p.y - y
+        segments.push({ x1: x, y1: y, x2: ox, y2: oy, mask: ray.mask, d0: d1, d1: d1 + Math.hypot(ox - x, oy - y) })
+        queue.push({ ...ray, x: ox, y: oy, dx: -ray.dx, dy: -ray.dy, d0: d1 + Math.hypot(ox - x, oy - y), depth: ray.depth + 1, from: hit })
+        break
+      }
+      case 'grating': {
+        const spread = ((hit.piece as Extract<Piece, { type: 'grating' }>).spread * Math.PI) / 180
+        next(ray.dx, ray.dy)
+        for (const a of [spread, -spread]) {
+          const c = Math.cos(a)
+          const s = Math.sin(a)
+          next(ray.dx * c - ray.dy * s, ray.dx * s + ray.dy * c)
+        }
+        break
+      }
+      case 'lens': {
+        // Thin lens: the further off-centre the beam crosses, the more it bends.
+        const p = hit.piece as Extract<Piece, { type: 'convex-lens' | 'concave-lens' }>
+        const f = p.type === 'convex-lens' ? p.focal : -p.focal
+        const ax = dot < 0 ? -hit.n.x : hit.n.x
+        const ay = dot < 0 ? -hit.n.y : hit.n.y
+        const tx = -ay
+        const ty = ax
+        const h = (x - p.x) * tx + (y - p.y) * ty
+        const along = ray.dx * ax + ray.dy * ay
+        const slope = (ray.dx * tx + ray.dy * ty) / along - h / f
+        const out = unit({ x: ax + slope * tx, y: ay + slope * ty })
+        next(out.x, out.y)
+        break
+      }
+      case 'polariser': {
+        const axis = (hit.piece as Extract<Piece, { type: 'polariser' }>).axis === 'vertical' ? 1 : 2
+        if (ray.pol === 0 || ray.pol === axis) next(ray.dx, ray.dy, { pol: axis })
+        break
+      }
+      case 'waveplate':
+        next(ray.dx, ray.dy, { pol: ray.pol === 1 ? 2 : ray.pol === 2 ? 1 : 0 })
+        break
       case 'refract': {
         const piece = hit.piece!
         const entering = ray.medium !== piece

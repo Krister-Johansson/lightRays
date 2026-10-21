@@ -5,32 +5,65 @@ import type { Vec2 } from './types'
 // you see is exactly what the light hits.
 
 export const MIRROR_HALF = 30
+export const LENS_HALF = 34
+export const PLATE_HALF = 28
+export const RETRO_HALF = 26
+export const CONCAVE_HALF = 36
+export const RHOMBOID_WIDTH = 36
+export const WEDGE = { h: 70, t: 24 }
 export const SPLITTER_HALF = 28
 export const FILTER_HALF = 26
 export const RECEIVER_R = 22
 export const TUBE = { length: 64, width: 40, sensorR: 14 }
 export const GRID = 20
 
+export const PIECE_GROUPS = ['Sources', 'Reflect', 'Split', 'Prisms and lenses', 'Colour and polarisation', 'Goals and terrain'] as const
+
 export type PieceInfo = {
   label: string
-  group: 'Sources' | 'Optics' | 'Goals and terrain'
+  group: (typeof PIECE_GROUPS)[number]
   blurb: string
   rotatable: boolean
   resizable: boolean
 }
 
+const info = (label: string, group: PieceInfo['group'], blurb: string, extra: Partial<PieceInfo> = {}): PieceInfo => ({
+  label,
+  group,
+  blurb,
+  rotatable: true,
+  resizable: false,
+  ...extra,
+})
+
 export const PIECE_INFO: Record<PieceType, PieceInfo> = {
-  laser: { label: 'Laser', group: 'Sources', blurb: 'Emits a beam in its colour', rotatable: true, resizable: false },
-  mirror: { label: 'Mirror', group: 'Optics', blurb: 'One shiny side. The back absorbs', rotatable: true, resizable: false },
-  'double-mirror': { label: 'Double mirror', group: 'Optics', blurb: 'Reflects on both faces', rotatable: true, resizable: false },
-  splitter: { label: 'Splitter', group: 'Optics', blurb: 'Half passes, half reflects', rotatable: true, resizable: false },
-  prism: { label: 'Prism', group: 'Optics', blurb: 'Bends light and splits mixed colours', rotatable: true, resizable: false },
-  filter: { label: 'Colour filter', group: 'Optics', blurb: 'Only its colour gets through', rotatable: true, resizable: false },
-  glass: { label: 'Glass block', group: 'Optics', blurb: 'Bends the beam, leaves it parallel', rotatable: true, resizable: true },
-  receiver: { label: 'Open receiver', group: 'Goals and terrain', blurb: 'Lit from any side', rotatable: false, resizable: false },
-  tube: { label: 'Tube receiver', group: 'Goals and terrain', blurb: 'Beam must enter the mouth head-on', rotatable: true, resizable: false },
-  wall: { label: 'Wall', group: 'Goals and terrain', blurb: 'Blocks light', rotatable: false, resizable: true },
+  laser: info('Laser', 'Sources', 'Emits a beam in its colour'),
+  mirror: info('Mirror', 'Reflect', 'One shiny side. The back absorbs'),
+  'double-mirror': info('Double mirror', 'Reflect', 'Reflects on both faces'),
+  retro: info('Retroreflector', 'Reflect', 'Sends any beam straight back where it came from'),
+  concave: info('Concave mirror', 'Reflect', 'Parallel beams bounce back and meet at the focus'),
+  splitter: info('Splitter', 'Split', 'Half passes, half reflects'),
+  dichroic: info('Dichroic mirror', 'Split', 'Reflects its colour, lets the others through'),
+  grating: info('Grating', 'Split', 'Splits a beam in three: straight on and one each side'),
+  prism: info('Prism', 'Prisms and lenses', 'Bends light and splits mixed colours'),
+  'right-prism': info('Right-angle prism', 'Prisms and lenses', 'Turns a beam 90°, or U-turns it off the long face'),
+  rhomboid: info('Rhomboid prism', 'Prisms and lenses', 'Periscope in glass: shifts a beam sideways'),
+  wedge: info('Wedge prism', 'Prisms and lenses', 'Bends a beam by about 10°'),
+  'convex-lens': info('Convex lens', 'Prisms and lenses', 'Bends beams toward its focus'),
+  'concave-lens': info('Concave lens', 'Prisms and lenses', 'Spreads beams apart'),
+  glass: info('Glass block', 'Prisms and lenses', 'Bends the beam, leaves it parallel', { resizable: true }),
+  filter: info('Colour filter', 'Colour and polarisation', 'Only its colour gets through'),
+  gate: info('Colour gate', 'Colour and polarisation', 'Only beams of its colour pass. The rest stop', { resizable: true }),
+  polariser: info('Polariser', 'Colour and polarisation', 'Polarises light. Blocks light polarised the other way'),
+  waveplate: info('Wave plate', 'Colour and polarisation', 'Turns polarisation 90°'),
+  receiver: info('Open receiver', 'Goals and terrain', 'Lit from any side', { rotatable: false }),
+  tube: info('Tube receiver', 'Goals and terrain', 'Beam must enter the mouth head-on'),
+  wall: info('Wall', 'Goals and terrain', 'Blocks light', { rotatable: false, resizable: true }),
 }
+
+/** Pieces with a width and height the editor can drag to resize. */
+export type SizedPiece = Extract<Piece, { w: number; h: number }>
+export const isSized = (p: Piece): p is SizedPiece => PIECE_INFO[p.type].resizable
 
 export const PIECE_TYPES = Object.keys(PIECE_INFO) as PieceType[]
 
@@ -84,13 +117,83 @@ export function prismCorners(p: { x: number; y: number; angle: number }, size: n
   })
 }
 
+/** 45-45-90 triangle with legs of `size`; the long face points along the piece angle. */
+export function rightPrismLocal(size: number): Vec2[] {
+  const k = size / Math.SQRT2
+  return [
+    { x: (-2 * k) / 3, y: 0 },
+    { x: k / 3, y: k },
+    { x: k / 3, y: -k },
+  ]
+}
+
+/** Parallelogram with 45° ends. A beam entering a long side next to one end leaves `length` further along. */
+export function rhomboidLocal(length: number): Vec2[] {
+  const L = length / 2
+  const w = RHOMBOID_WIDTH / 2
+  return [
+    { x: -L - w, y: -w },
+    { x: L - w, y: -w },
+    { x: L + w, y: w },
+    { x: -L + w, y: w },
+  ]
+}
+
+/** Thin right-angle wedge: flat back facing away from the angle, slanted front. */
+export function wedgeLocal(): Vec2[] {
+  const { h, t } = WEDGE
+  return [
+    { x: -t / 2, y: -h / 2 },
+    { x: -t / 2, y: h / 2 },
+    { x: t / 2, y: -h / 2 },
+  ]
+}
+
+/** Points along a concave mirror, vertex at the centre, curving toward the angle. */
+export function concaveLocal(focal: number, steps = 12): Vec2[] {
+  const R = Math.max(focal * 2, CONCAVE_HALF * 1.05)
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const ly = -CONCAVE_HALF + (2 * CONCAVE_HALF * i) / steps
+    return { x: R - Math.sqrt(R * R - ly * ly), y: ly }
+  })
+}
+
+/** Outline of a polygon piece in its own frame (x along the angle, y down), or null for flat optics. */
+export function localPolygon(p: Piece): Vec2[] | null {
+  switch (p.type) {
+    case 'prism':
+      return prismCorners({ x: 0, y: 0, angle: 0 }, p.size)
+    case 'right-prism':
+      return rightPrismLocal(p.size)
+    case 'rhomboid':
+      return rhomboidLocal(p.length)
+    case 'wedge':
+      return wedgeLocal()
+    case 'glass':
+    case 'wall':
+    case 'gate':
+      return rectCorners({ x: 0, y: 0, angle: 0 }, p.w, p.h)
+    default:
+      return null
+  }
+}
+
+/** The polygon outline in board coordinates. */
+export function boardPolygon(p: Piece): Vec2[] | null {
+  return localPolygon(p)?.map((v) => toBoard(p, v.x, v.y)) ?? null
+}
+
 export function halfSize(p: Piece): { w: number; h: number } {
   switch (p.type) {
     case 'wall':
     case 'glass':
+    case 'gate':
       return { w: p.w / 2, h: p.h / 2 }
     case 'prism':
+    case 'right-prism':
       return { w: p.size / 2, h: p.size / 2 }
+    case 'rhomboid':
+      return { w: p.length / 2 + RHOMBOID_WIDTH / 2, h: RHOMBOID_WIDTH / 2 }
     case 'laser':
       return { w: 30, h: 24 }
     case 'tube':

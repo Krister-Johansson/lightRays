@@ -1,4 +1,4 @@
-import { colorHex, faceSegment, MIRROR_HALF, prismCorners, rectCorners } from '../game/pieces'
+import { boardPolygon, colorHex, faceSegment, MIRROR_HALF } from '../game/pieces'
 import type { LevelDef, Piece } from '../game/schema'
 
 /** Flat top-down thumbnail of a level's starting layout. */
@@ -30,13 +30,18 @@ function PreviewPiece({ p }: { p: Piece }) {
   if (p.lock === 'kit') {
     return <rect x={p.x - 28} y={p.y - 28} width="56" height="56" rx="8" fill="none" stroke="#A3A7AE" strokeWidth="4" strokeDasharray="10 8" />
   }
+  const poly = boardPolygon(p)
   switch (p.type) {
     case 'wall':
-      return <polygon points={pts(rectCorners(p, p.w, p.h))} fill="#2A2E34" />
+      return <polygon points={pts(poly!)} fill="#2A2E34" />
+    case 'gate':
+      return <polygon points={pts(poly!)} fill={colorHex(p.color)} fillOpacity="0.3" stroke={colorHex(p.color)} strokeWidth="3" />
     case 'glass':
-      return <polygon points={pts(rectCorners(p, p.w, p.h))} fill="#9CCFFF" fillOpacity="0.15" stroke="#6E8CA8" strokeWidth="3" />
     case 'prism':
-      return <polygon points={pts(prismCorners(p, p.size))} fill="#9CCFFF" fillOpacity="0.15" stroke="#6E8CA8" strokeWidth="3" />
+    case 'right-prism':
+    case 'rhomboid':
+    case 'wedge':
+      return <polygon points={pts(poly!)} fill="#9CCFFF" fillOpacity="0.15" stroke="#6E8CA8" strokeWidth="3" />
     case 'laser':
       return <circle cx={p.x} cy={p.y} r="16" fill={colorHex(p.color)} />
     case 'receiver':

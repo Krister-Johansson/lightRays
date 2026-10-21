@@ -45,13 +45,30 @@ npm run lint     # oxlint
 | Open receiver | Lit from any side. Can require an exact colour. |
 | Tube receiver | Only lit when the beam enters the mouth head-on. |
 | Wall | Blocks light. Resizable. |
+| Retroreflector | Sends any beam straight back, mirrored across its centre. |
+| Concave mirror | Parallel beams bounce back and meet at the focus. |
+| Dichroic mirror | Reflects its colour, lets the other colours through. |
+| Grating | Splits a beam in three: straight on and ± a spread angle. |
+| Right-angle prism | Turns a beam 90°, or U-turns it off the long face (total internal reflection). |
+| Rhomboid prism | Periscope in glass: shifts a beam sideways, same direction out. |
+| Wedge prism | Bends a beam by about 10°. |
+| Convex / concave lens | Thin lens: converges to, or spreads from, its focal point. |
+| Colour gate | Only beams made purely of its colour pass. Resizable. |
+| Polariser | Polarises light (vertical or horizontal) and blocks the other polarisation. |
+| Wave plate | Turns polarisation 90°. |
+
+## Camera
+
+Scroll (or the zoom buttons, or + − 0) zooms toward the pointer, and dragging the empty board
+(or right-dragging anywhere) pans.
 
 ## Sandbox
 
 Open it from the menu (`#/sandbox`). Drag pieces from the left palette onto the board, drag a
 piece off the board to delete it, rotate with the dial and resize walls and glass with their
 handles. The right inspector sets who places each piece (fixed, rotate only, or in the
-player's kit), "must be hit", colour and size. **Test play** plays your board as a level, with
+player's kit), "must be hit", colour, size and focal length, and the board size (up to
+1760 × 980) when nothing is selected. **Test play** plays your board as a level, with
 kit pieces moved into the tray. **Export** downloads the level JSON (your layout is saved as
 the solution and the rotatable pieces are scrambled), **Import** loads one back. The board
 autosaves in your browser.

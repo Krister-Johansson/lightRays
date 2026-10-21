@@ -1,15 +1,13 @@
 import type { Game } from '../game/Game'
-import { PIECE_INFO, PIECE_TYPES } from '../game/pieces'
+import { PIECE_GROUPS, PIECE_INFO, PIECE_TYPES } from '../game/pieces'
 import type { PieceType } from '../game/schema'
 import { PieceIcon } from './PieceIcon'
-
-const GROUPS = ['Sources', 'Optics', 'Goals and terrain'] as const
 
 /** Sandbox piece palette: drag a piece onto the board, or click to drop it in the middle. */
 export function Palette({ game }: { game: Game }) {
   return (
     <nav aria-label="Pieces" className="flex flex-col gap-6">
-      {GROUPS.map((group) => (
+      {PIECE_GROUPS.map((group) => (
         <section key={group} className="flex flex-col gap-2">
           <h2 className="m-0 font-mono text-[11px] tracking-[1.5px] text-muted uppercase">{group}</h2>
           <div className="grid grid-cols-2 gap-2">

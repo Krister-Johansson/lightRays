@@ -2,15 +2,20 @@ import * as THREE from 'three'
 import { ribbon } from './geometry'
 import {
   colorHex,
+  concaveLocal,
   FILTER_HALF,
   halfSize,
+  LENS_HALF,
+  localPolygon,
   MIRROR_HALF,
-  prismCorners,
+  PLATE_HALF,
   RECEIVER_R,
+  RETRO_HALF,
   SPLITTER_HALF,
   TUBE,
 } from './pieces'
 import type { Piece } from './schema'
+import type { Vec2 } from './types'
 
 /** World units per board pixel. */
 export const S = 0.01
@@ -92,6 +97,43 @@ function flatOptic(half: number, face: string, back: string | null, opts: { face
   return g
 }
 
+/** Extrudes a flat outline (piece-local board px, y down) into a slab lying on the board. */
+function slab(outline: Vec2[], mat: THREE.Material, depth = 0.16) {
+  const shape = new THREE.Shape(outline.map((v) => new THREE.Vector2(v.x * S, -v.y * S)))
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false })
+  geo.rotateX(-Math.PI / 2)
+  return new THREE.Mesh(geo, mat)
+}
+
+function glassSlab(outline: Vec2[]) {
+  const mesh = slab(outline, glassMaterial())
+  mesh.add(edges(mesh.geometry, PALETTE.glassEdge))
+  return mesh
+}
+
+/** Thin plate standing on a dark foot, used for gratings, polarisers and wave plates. */
+function plate(tint: string, opacity: number) {
+  const g = new THREE.Group()
+  const len = PLATE_HALF * 2 * S
+  g.add(box(10 * S, 0.03, len + 8 * S, std('#2A2E34'), 0, 0.015))
+  const mat = new THREE.MeshStandardMaterial({ color: tint, emissive: tint, emissiveIntensity: 0.3, transparent: true, opacity, roughness: 0.3, depthWrite: false })
+  g.add(box(4 * S, 0.15, len, mat))
+  return g
+}
+
+/** Short ticks spaced along a plate face. */
+function faceTicks(count: number, color: string) {
+  const g = new THREE.Group()
+  const mat = std(color, { roughness: 0.5 })
+  for (let i = 0; i < count; i++) g.add(box(5 * S, 0.004, 1.6 * S, mat, 0, 0.152, ((i + 0.5) / count - 0.5) * PLATE_HALF * 2 * S))
+  return g
+}
+
+/** One line running the length of a plate face. */
+function faceLine(color: string) {
+  return box(1.2 * S, 0.004, PLATE_HALF * 1.8 * S, std(color, { roughness: 0.5 }), 0, 0.152)
+}
+
 function buildSensor(p: Extract<Piece, { type: 'receiver' | 'tube' }>, pivot: THREE.Group, view: Partial<PieceView>) {
   const tint = new THREE.Color(p.color ? colorHex(p.color) : PALETTE.amber)
   const r = p.type === 'tube' ? TUBE.sensorR : RECEIVER_R
@@ -130,11 +172,25 @@ export function buildPieceView(p: Piece): PieceView {
 
   switch (p.type) {
     case 'laser': {
-      pivot.add(box(54 * S, 0.18, 44 * S, std('#1B1E22'), -27 * S))
-      pivot.add(box(10 * S, 0.1, 16 * S, std('#3A3F46', { metalness: 0.4, roughness: 0.5 }), 0, 0.05 + 0.02))
-      const led = flat(new THREE.CircleGeometry(5 * S, 24), new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex(p.color)).multiplyScalar(3) }), 0.181)
-      led.position.x = -40 * S
-      pivot.add(led)
+      // Light metal body with a glowing colour stripe and aperture, so it reads on the dark board.
+      const c = new THREE.Color(colorHex(p.color))
+      const body = box(54 * S, 0.2, 40 * S, std('#4A5059', { roughness: 0.45, metalness: 0.5 }), -29 * S)
+      body.add(edges(body.geometry, '#6E757F'))
+      pivot.add(body)
+      pivot.add(box(46 * S, 0.02, 30 * S, std('#5A616B', { roughness: 0.4, metalness: 0.5 }), -29 * S, 0.21))
+      pivot.add(box(40 * S, 0.012, 6 * S, new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(1.6) }), -29 * S, 0.226))
+      pivot.add(box(10 * S, 0.14, 20 * S, std('#6E757F', { metalness: 0.6, roughness: 0.35 }), -1 * S, 0.07))
+      const aperture = flat(new THREE.CircleGeometry(5 * S, 24), new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(2.4) }), BEAM_Y)
+      aperture.rotation.set(0, Math.PI / 2, 0)
+      aperture.position.x = 4.1 * S
+      pivot.add(aperture)
+      const glow = flat(
+        new THREE.CircleGeometry(30 * S, 32),
+        new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(0.18), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+        0.003,
+      )
+      glow.position.x = -20 * S
+      pivot.add(glow)
       break
     }
     case 'mirror':
@@ -165,16 +221,12 @@ export function buildPieceView(p: Piece): PieceView {
       pivot.add(box(8 * S, 0.03, FILTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
       break
     }
-    case 'prism': {
-      const pts = prismCorners({ x: 0, y: 0, angle: 0 }, p.size)
-      const shape = new THREE.Shape(pts.map((v) => new THREE.Vector2(v.x * S, -v.y * S)))
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: false })
-      geo.rotateX(-Math.PI / 2)
-      const mesh = new THREE.Mesh(geo, glassMaterial())
-      mesh.add(edges(geo, PALETTE.glassEdge))
-      pivot.add(mesh)
+    case 'prism':
+    case 'right-prism':
+    case 'rhomboid':
+    case 'wedge':
+      pivot.add(glassSlab(localPolygon(p)!))
       break
-    }
     case 'glass': {
       const mesh = box(p.w * S, 0.16, p.h * S, glassMaterial())
       mesh.castShadow = false
@@ -186,6 +238,77 @@ export function buildPieceView(p: Piece): PieceView {
       const mesh = box(p.w * S, 0.26, p.h * S, std(PALETTE.wall, { roughness: 0.8, metalness: 0 }))
       mesh.add(edges(mesh.geometry, PALETTE.wallEdge))
       pivot.add(mesh)
+      break
+    }
+    case 'gate': {
+      const c = colorHex(p.color)
+      const mat = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.45, transparent: true, opacity: 0.32, roughness: 0.4, depthWrite: false })
+      const mesh = box(p.w * S, 0.2, p.h * S, mat)
+      mesh.castShadow = false
+      mesh.add(edges(mesh.geometry, c))
+      pivot.add(mesh)
+      break
+    }
+    case 'retro': {
+      // Dark housing with three corner-cube facets on its face.
+      const len = RETRO_HALF * 2 * S
+      pivot.add(box(14 * S, 0.15, len, std('#2C3036', { roughness: 0.5, metalness: 0.3 }), -6 * S))
+      const facet = std('#C9D3DE', { metalness: 0.7, roughness: 0.2, emissive: '#7d8896', emissiveIntensity: 0.5 })
+      for (let i = 0; i < 3; i++) {
+        const z = ((i + 0.5) / 3 - 0.5) * len
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(8 * S, 6 * S, 3), facet)
+        cone.rotation.z = -Math.PI / 2
+        cone.position.set(3 * S, 0.075, z)
+        pivot.add(cone)
+      }
+      break
+    }
+    case 'concave': {
+      const pts = concaveLocal(p.focal)
+      const face = std(PALETTE.mirrorFace, { roughness: 0.25, metalness: 0.6, emissive: '#9aa0a8', emissiveIntensity: 0.55 })
+      const back = std(PALETTE.mirrorBack, { roughness: 0.5, metalness: 0.3 })
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
+        const len = Math.hypot(b.x - a.x, b.y - a.y) * S + 0.002
+        const seg = new THREE.Group()
+        seg.position.set(((a.x + b.x) / 2) * S, 0, ((a.y + b.y) / 2) * S)
+        seg.rotation.y = Math.atan2(b.x - a.x, b.y - a.y)
+        seg.add(box(3 * S, 0.15, len, face), box(6 * S, 0.15, len, back, -4.5 * S))
+        pivot.add(seg)
+      }
+      break
+    }
+    case 'dichroic': {
+      const c = colorHex(p.color)
+      pivot.add(box(8 * S, 0.03, SPLITTER_HALF * 2 * S + 6 * S, std('#2A2E34'), 0, 0.015))
+      pivot.add(flatOptic(SPLITTER_HALF, c, null, { faceOpacity: 0.7, emissive: c }))
+      break
+    }
+    case 'grating':
+      pivot.add(plate('#B7C4FF', 0.45), faceTicks(7, '#E6ECFF'))
+      break
+    case 'polariser':
+      pivot.add(plate('#8A9099', 0.6), p.axis === 'vertical' ? faceLine('#E6E8EB') : faceTicks(6, '#E6E8EB'))
+      break
+    case 'waveplate':
+      pivot.add(plate('#C58BFF', 0.5))
+      break
+    case 'convex-lens':
+    case 'concave-lens': {
+      // Lens outline: thick in the middle for convex, thick at the rims for concave.
+      const n = 16
+      const outline: Vec2[] = []
+      const half = (t: number) => (p.type === 'convex-lens' ? 3 + 9 * (1 - t * t) : 3 + 8 * t * t)
+      for (let i = 0; i <= n; i++) {
+        const t = -1 + (2 * i) / n
+        outline.push({ x: half(t), y: t * LENS_HALF })
+      }
+      for (let i = n; i >= 0; i--) {
+        const t = -1 + (2 * i) / n
+        outline.push({ x: -half(t), y: t * LENS_HALF })
+      }
+      pivot.add(glassSlab(outline))
       break
     }
     case 'receiver':
@@ -204,7 +327,7 @@ export function buildPieceView(p: Piece): PieceView {
   }
 
   // Lock badges: a screwed plate for fixed optics, a pin for rotate-only.
-  const optic = !['laser', 'receiver', 'wall', 'tube', 'glass'].includes(p.type)
+  const optic = !['laser', 'receiver', 'wall', 'tube', 'glass', 'gate'].includes(p.type)
   if (optic && p.lock === 'fixed') {
     const plate = box(72 * S, 0.02, 72 * S, std(PALETTE.plate, { roughness: 0.7 }), 0, 0.01)
     plate.castShadow = false
