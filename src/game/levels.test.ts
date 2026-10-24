@@ -43,6 +43,10 @@ describe('levels', () => {
       const start = boardPieces(level)
       expect(isSolved(start, trace(level, start))).toBe(false)
     })
+    it(`${level.id} has every test figure safe at the start`, () => {
+      const start = boardPieces(level)
+      expect(figuresSafe(start, trace(level, start).segments)).toBe(true)
+    })
     it(`${level.id} has a solution`, () => {
       if (level.solution) {
         expect(solutionWorks(level)).toBe(true)

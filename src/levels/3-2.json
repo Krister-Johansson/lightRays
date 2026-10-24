@@ -1,0 +1,98 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "3-2",
+  "name": "Full spectrum",
+  "par": 3,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 520,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "white"
+    },
+    {
+      "id": "P",
+      "x": 300,
+      "y": 520,
+      "angle": 20,
+      "lock": "rotate",
+      "type": "prism",
+      "size": 90
+    },
+    {
+      "id": "Rg",
+      "x": 552,
+      "y": 290,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "green"
+    },
+    {
+      "id": "Rr",
+      "x": 1000,
+      "y": 470,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "red"
+    },
+    {
+      "id": "Rb",
+      "x": 130,
+      "y": 110,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "blue"
+    },
+    {
+      "id": "ida",
+      "x": 440,
+      "y": 592,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "scientist",
+      "walk": 240
+    },
+    {
+      "id": "MR",
+      "x": 736,
+      "y": 241,
+      "angle": 200,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "MB",
+      "x": 504,
+      "y": 207,
+      "angle": 20,
+      "lock": "rotate",
+      "type": "mirror"
+    }
+  ],
+  "solution": {
+    "P": {
+      "x": 300,
+      "y": 520,
+      "angle": 50
+    },
+    "MR": {
+      "x": 736,
+      "y": 241,
+      "angle": 265.7
+    },
+    "MB": {
+      "x": 504,
+      "y": 207,
+      "angle": 202.1
+    }
+  }
+}

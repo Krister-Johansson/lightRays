@@ -20,7 +20,8 @@ function goalText(level: LevelDef) {
   const goals = level.pieces.filter((p) => p.type === 'receiver' || p.type === 'tube').length
   const must = level.pieces.some((p) => p.mustHit)
   const what = goals === 1 ? 'Light the receiver' : `Light all ${goals} receivers`
-  return must ? `${what} and hit the marked piece.` : `${what}.`
+  const goal = must ? `${what} and hit the marked piece.` : `${what}.`
+  return level.pieces.some((p) => p.type === 'scientist') ? `${goal} Don't zap the test figures.` : goal
 }
 
 function kitSummary(level: LevelDef) {

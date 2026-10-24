@@ -1,0 +1,74 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "2-1",
+  "name": "Fork in the road",
+  "par": 2,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 310,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "yellow"
+    },
+    {
+      "id": "R1",
+      "x": 450,
+      "y": 80,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver"
+    },
+    {
+      "id": "R2",
+      "x": 850,
+      "y": 560,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver"
+    },
+    {
+      "id": "S",
+      "x": 450,
+      "y": 310,
+      "angle": 20,
+      "lock": "rotate",
+      "type": "splitter"
+    },
+    {
+      "id": "M",
+      "x": 850,
+      "y": 310,
+      "angle": 90,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "wall1",
+      "x": 1060,
+      "y": 310,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "wall",
+      "w": 40,
+      "h": 200
+    }
+  ],
+  "solution": {
+    "S": {
+      "x": 450,
+      "y": 310,
+      "angle": 135
+    },
+    "M": {
+      "x": 850,
+      "y": 310,
+      "angle": 225
+    }
+  }
+}

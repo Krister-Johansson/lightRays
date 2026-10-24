@@ -1,0 +1,84 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "1-6",
+  "name": "Shift change",
+  "par": 2,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 100,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "yellow"
+    },
+    {
+      "id": "receiver",
+      "x": 1000,
+      "y": 520,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver"
+    },
+    {
+      "id": "A",
+      "x": 520,
+      "y": 100,
+      "angle": 30,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "B",
+      "x": 520,
+      "y": 520,
+      "angle": 200,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "kim",
+      "x": 690,
+      "y": 260,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "scientist",
+      "walk": 260
+    },
+    {
+      "id": "ola",
+      "x": 160,
+      "y": 380,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "scientist",
+      "walk": 220
+    },
+    {
+      "id": "wall1",
+      "x": 320,
+      "y": 230,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "wall",
+      "w": 60,
+      "h": 120
+    }
+  ],
+  "solution": {
+    "A": {
+      "x": 520,
+      "y": 100,
+      "angle": 225
+    },
+    "B": {
+      "x": 520,
+      "y": 520,
+      "angle": 45
+    }
+  }
+}

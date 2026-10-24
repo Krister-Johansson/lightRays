@@ -1,0 +1,109 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "2-2",
+  "name": "Both halves",
+  "par": 4,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 300,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "cyan"
+    },
+    {
+      "id": "R1",
+      "x": 1000,
+      "y": 80,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver"
+    },
+    {
+      "id": "R2",
+      "x": 1000,
+      "y": 540,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver"
+    },
+    {
+      "id": "S",
+      "x": 360,
+      "y": 300,
+      "angle": 20,
+      "lock": "rotate",
+      "type": "splitter"
+    },
+    {
+      "id": "A",
+      "x": 360,
+      "y": 80,
+      "angle": 0,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "B",
+      "x": 680,
+      "y": 300,
+      "angle": 200,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "C",
+      "x": 680,
+      "y": 540,
+      "angle": 270,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "lea",
+      "x": 820,
+      "y": 300,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "scientist",
+      "walk": 220
+    },
+    {
+      "id": "wall1",
+      "x": 680,
+      "y": 160,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "wall",
+      "w": 40,
+      "h": 120
+    }
+  ],
+  "solution": {
+    "S": {
+      "x": 360,
+      "y": 300,
+      "angle": 315
+    },
+    "A": {
+      "x": 360,
+      "y": 80,
+      "angle": 315
+    },
+    "B": {
+      "x": 680,
+      "y": 300,
+      "angle": 225
+    },
+    "C": {
+      "x": 680,
+      "y": 540,
+      "angle": 45
+    }
+  }
+}

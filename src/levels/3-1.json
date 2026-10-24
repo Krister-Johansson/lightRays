@@ -1,0 +1,75 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "3-1",
+  "name": "Rainbow",
+  "par": 2,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 300,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "white"
+    },
+    {
+      "id": "P",
+      "x": 300,
+      "y": 300,
+      "angle": 50,
+      "lock": "fixed",
+      "type": "prism",
+      "size": 90
+    },
+    {
+      "id": "Rr",
+      "x": 1000,
+      "y": 420,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "red"
+    },
+    {
+      "id": "Rb",
+      "x": 110,
+      "y": 70,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "blue"
+    },
+    {
+      "id": "MR",
+      "x": 525,
+      "y": 154,
+      "angle": 300,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "MB",
+      "x": 431,
+      "y": 107,
+      "angle": 160,
+      "lock": "rotate",
+      "type": "mirror"
+    }
+  ],
+  "solution": {
+    "MR": {
+      "x": 525,
+      "y": 154,
+      "angle": 271.5
+    },
+    "MB": {
+      "x": 431,
+      "y": 107,
+      "angle": 206.1
+    }
+  }
+}

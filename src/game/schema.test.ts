@@ -6,7 +6,7 @@ import { LevelSchema, parseLevel, serializeLevel } from './schema'
 
 describe('level files', () => {
   it('loads every level in order', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual(['1-1', '1-2', '1-3', '1-4'])
+    expect(LEVELS.map((l) => l.id)).toEqual(['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '2-1', '2-2', '2-3', '3-1', '3-2', '4-1', '4-2'])
   })
 
   it('round-trips through export and import', () => {

@@ -1,0 +1,117 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "4-1",
+  "name": "Red light, green light",
+  "par": 5,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 300,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "yellow"
+    },
+    {
+      "id": "Rr",
+      "x": 1000,
+      "y": 90,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "red"
+    },
+    {
+      "id": "Rg",
+      "x": 700,
+      "y": 560,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "green"
+    },
+    {
+      "id": "S",
+      "x": 350,
+      "y": 300,
+      "angle": 20,
+      "lock": "rotate",
+      "type": "splitter"
+    },
+    {
+      "id": "M1",
+      "x": 350,
+      "y": 90,
+      "angle": 270,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "M2",
+      "x": 700,
+      "y": 300,
+      "angle": 60,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "F1",
+      "x": 650,
+      "y": 90,
+      "angle": 0,
+      "lock": "kit",
+      "type": "filter",
+      "color": "red"
+    },
+    {
+      "id": "F2",
+      "x": 700,
+      "y": 440,
+      "angle": 90,
+      "lock": "kit",
+      "type": "filter",
+      "color": "green"
+    },
+    {
+      "id": "wall1",
+      "x": 1000,
+      "y": 300,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "wall",
+      "w": 40,
+      "h": 160
+    }
+  ],
+  "solution": {
+    "S": {
+      "x": 350,
+      "y": 300,
+      "angle": 135
+    },
+    "M1": {
+      "x": 350,
+      "y": 90,
+      "angle": 315
+    },
+    "M2": {
+      "x": 700,
+      "y": 300,
+      "angle": 225
+    },
+    "F1": {
+      "x": 650,
+      "y": 90,
+      "angle": 0
+    },
+    "F2": {
+      "x": 700,
+      "y": 440,
+      "angle": 90
+    }
+  }
+}

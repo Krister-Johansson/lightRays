@@ -1,0 +1,90 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "4-2",
+  "name": "Colour guard",
+  "par": 3,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    {
+      "id": "laser",
+      "x": 70,
+      "y": 150,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "laser",
+      "color": "magenta"
+    },
+    {
+      "id": "Rr",
+      "x": 1000,
+      "y": 150,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "red"
+    },
+    {
+      "id": "Rb",
+      "x": 1000,
+      "y": 520,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "receiver",
+      "color": "blue"
+    },
+    {
+      "id": "D",
+      "x": 400,
+      "y": 150,
+      "angle": 0,
+      "lock": "rotate",
+      "type": "dichroic",
+      "color": "blue"
+    },
+    {
+      "id": "M",
+      "x": 400,
+      "y": 520,
+      "angle": 150,
+      "lock": "rotate",
+      "type": "mirror"
+    },
+    {
+      "id": "F",
+      "x": 760,
+      "y": 150,
+      "angle": 0,
+      "lock": "kit",
+      "type": "filter",
+      "color": "red"
+    },
+    {
+      "id": "noa",
+      "x": 600,
+      "y": 335,
+      "angle": 0,
+      "lock": "fixed",
+      "type": "scientist",
+      "walk": 300
+    }
+  ],
+  "solution": {
+    "D": {
+      "x": 400,
+      "y": 150,
+      "angle": 45
+    },
+    "M": {
+      "x": 400,
+      "y": 520,
+      "angle": 45
+    },
+    "F": {
+      "x": 760,
+      "y": 150,
+      "angle": 0
+    }
+  }
+}

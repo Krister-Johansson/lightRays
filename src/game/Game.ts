@@ -9,7 +9,7 @@ import { FigureView } from './figure'
 import { baseSpan, collides, distanceToSegment, FIGURE, figurePosition, COLOR_HEX, isSized, PIECE_INFO, playerCanResize, playerCanRotate, resizable, scaleOf, toBoard } from './pieces'
 import { type LevelDef, type Piece, PieceSchema, type PieceType } from './schema'
 import { isSolved, receivers, trace } from './trace'
-import type { TraceResult } from './types'
+import type { BeamSegment, TraceResult } from './types'
 
 const DOT_CELL = 40
 /** Thickness of the chamber wall panels around the board, in board px. */
@@ -699,7 +699,13 @@ export class Game {
     disposeObject(this.beamGroup)
     this.beamGroup.clear()
     const byMask = new Map<number, { pts: THREE.Vector2[]; dist: number[] }>()
+    // Light bouncing straight back (a face-on mirror) retraces the same line; draw it once, or the
+    // additive layers stack up into a blown-out bar.
+    const drawn: BeamSegment[] = []
     for (const s of this.result.segments) {
+      const covered = drawn.some((o) => o.mask === s.mask && distanceToSegment(s.x1, s.y1, o) < 0.5 && distanceToSegment(s.x2, s.y2, o) < 0.5)
+      if (covered) continue
+      drawn.push(s)
       const a = this.toWorld(s.x1, s.y1)
       const b = this.toWorld(s.x2, s.y2)
       const entry = byMask.get(s.mask) ?? { pts: [], dist: [] }
