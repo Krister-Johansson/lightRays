@@ -11,13 +11,15 @@ export const RETRO_HALF = 26
 export const CONCAVE_HALF = 36
 export const RHOMBOID_WIDTH = 36
 export const WEDGE = { h: 70, t: 24 }
+/** Test figure: hit radius, how close a beam makes it nervous, walking speed (px/s) and end pause (s). */
+export const FIGURE = { r: 18, nervous: 60, speed: 34, pause: 0.7 }
 export const SPLITTER_HALF = 28
 export const FILTER_HALF = 26
 export const RECEIVER_R = 22
 export const TUBE = { length: 64, width: 40, sensorR: 14 }
 export const GRID = 20
 
-export const PIECE_GROUPS = ['Sources', 'Reflect', 'Split', 'Prisms and lenses', 'Colour and polarisation', 'Goals and terrain'] as const
+export const PIECE_GROUPS = ['Sources', 'Reflect', 'Split', 'Prisms and lenses', 'Colour and polarisation', 'Goals and terrain', 'Test subjects'] as const
 
 export type PieceInfo = {
   label: string
@@ -59,6 +61,7 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
   receiver: info('Open receiver', 'Goals and terrain', 'Lit from any side', { rotatable: false }),
   tube: info('Tube receiver', 'Goals and terrain', 'Beam must enter the mouth head-on'),
   wall: info('Wall', 'Goals and terrain', 'Blocks light', { rotatable: false, resizable: true }),
+  scientist: info('Test figure', 'Test subjects', "Don't zap them. Turn it to set the walking direction"),
 }
 
 /** Pieces with a width and height the editor can drag to resize. */
@@ -194,7 +197,7 @@ export function boardPolygon(p: Piece): Vec2[] | null {
 export const scaleOf = (p: Piece) => p.scale ?? 1
 
 /** Optics the editor can resize with the end handles: everything but sources, goals and w×h pieces. */
-export const canScale = (p: Piece) => !['laser', 'receiver', 'tube'].includes(p.type) && !isSized(p)
+export const canScale = (p: Piece) => !['laser', 'receiver', 'tube', 'scientist'].includes(p.type) && !isSized(p)
 
 /** Whether the player may turn the piece in play. */
 export const playerCanRotate = (p: Piece) => PIECE_INFO[p.type].rotatable && (p.rotate ?? p.lock !== 'fixed')
@@ -244,6 +247,11 @@ export function footprint(p: Piece): Vec2[] {
   switch (p.type) {
     case 'laser':
       return rect(60, 40, -26)
+    case 'scientist':
+      return Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * Math.PI * 2
+        return { x: p.x + Math.cos(a) * FIGURE.r, y: p.y + Math.sin(a) * FIGURE.r }
+      })
     case 'receiver':
       return Array.from({ length: 12 }, (_, i) => {
         const a = (i / 12) * Math.PI * 2
@@ -298,4 +306,34 @@ export function polygonsOverlap(a: Vec2[], b: Vec2[], tolerance = 0.5): boolean 
 export function collides(piece: Piece, others: Piece[]): boolean {
   const mine = footprint(piece)
   return others.some((o) => o.id !== piece.id && polygonsOverlap(mine, footprint(o)))
+}
+
+/**
+ * Where a walking figure is `t` seconds in: it paces from its start along its angle for `walk` px,
+ * pauses, comes back and pauses again. Also returns which way it is heading (1 out, -1 back).
+ */
+export function figurePosition(p: Extract<Piece, { type: 'scientist' }>, t: number): { x: number; y: number; dir: 1 | -1 } {
+  if (p.walk <= 0) return { x: p.x, y: p.y, dir: 1 }
+  const leg = p.walk / FIGURE.speed
+  const cycle = 2 * (leg + FIGURE.pause)
+  const u = ((t % cycle) + cycle) % cycle
+  let d: number
+  let dir: 1 | -1 = 1
+  if (u < leg) d = u / leg
+  else if (u < leg + FIGURE.pause) d = 1
+  else if (u < 2 * leg + FIGURE.pause) {
+    d = 1 - (u - leg - FIGURE.pause) / leg
+    dir = -1
+  } else d = 0
+  const v = degToDir(p.angle)
+  return { x: p.x + v.x * p.walk * d, y: p.y + v.y * p.walk * d, dir }
+}
+
+/** Shortest distance from a point to a beam segment. */
+export function distanceToSegment(px: number, py: number, s: { x1: number; y1: number; x2: number; y2: number }): number {
+  const vx = s.x2 - s.x1
+  const vy = s.y2 - s.y1
+  const l2 = vx * vx + vy * vy || 1
+  const t = Math.max(0, Math.min(1, ((px - s.x1) * vx + (py - s.y1) * vy) / l2))
+  return Math.hypot(s.x1 + vx * t - px, s.y1 + vy * t - py)
 }

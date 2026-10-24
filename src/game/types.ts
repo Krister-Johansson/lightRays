@@ -23,4 +23,6 @@ export type TraceResult = {
   lit: Map<string, number>
   /** Every piece a beam touched. */
   hits: Set<string>
+  /** Test figures a beam touched: the test fails. */
+  zapped: Set<string>
 }

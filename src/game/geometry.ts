@@ -80,18 +80,30 @@ export function dashedCircle(radius: number, width: number, dash: number, gap: n
   return ribbon(pts, width, { pairs: true })
 }
 
-/** Dot grid texture for the matte board surface. */
-export function dotGridTexture(cell: number, dot: number, bg: string, fg: string) {
-  const size = 128
+/**
+ * Test-chamber floor: grey tiles two cells wide, with strong seams between tiles and faint ones
+ * through their middle. One texture repeat covers two cells.
+ */
+export function floorTileTexture() {
+  const size = 256
   const c = document.createElement('canvas')
   c.width = c.height = size
   const ctx = c.getContext('2d')!
-  ctx.fillStyle = bg
+  ctx.fillStyle = '#474B4F'
   ctx.fillRect(0, 0, size, size)
-  ctx.fillStyle = fg
-  ctx.beginPath()
-  ctx.arc(size / 2, size / 2, (dot / cell) * size, 0, Math.PI * 2)
-  ctx.fill()
+  // A little speckle so the concrete isn't a flat colour.
+  for (let i = 0; i < 900; i++) {
+    const x = (i * 97) % size
+    const y = (i * 61 + ((i * i) % 37)) % size
+    ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.05)'
+    ctx.fillRect(x, y, 2, 2)
+  }
+  ctx.fillStyle = '#3A3D41'
+  ctx.fillRect(0, 0, size, 3)
+  ctx.fillRect(0, 0, 3, size)
+  ctx.globalAlpha = 0.35
+  ctx.fillRect(0, size / 2 - 1, size, 2)
+  ctx.fillRect(size / 2 - 1, 0, 2, size)
   const tex = new THREE.CanvasTexture(c)
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping
   tex.colorSpace = THREE.SRGBColorSpace

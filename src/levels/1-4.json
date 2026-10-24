@@ -1,0 +1,15 @@
+{
+  "$schema": "./level.schema.json",
+  "version": 2,
+  "id": "1-4",
+  "name": "Mind the intern",
+  "par": 1,
+  "width": 1120,
+  "height": 620,
+  "pieces": [
+    { "id": "laser", "type": "laser", "x": 90, "y": 460, "angle": 0, "lock": "fixed", "color": "yellow" },
+    { "id": "receiver", "type": "receiver", "x": 700, "y": 90, "angle": 0, "lock": "fixed" },
+    { "id": "A", "type": "mirror", "x": 700, "y": 460, "angle": 250, "lock": "rotate" },
+    { "id": "intern", "type": "scientist", "x": 300, "y": 250, "angle": 0, "lock": "fixed", "walk": 220 }
+  ]
+}

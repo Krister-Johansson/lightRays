@@ -2,6 +2,7 @@ import {
   boardPolygon,
   concaveLocal,
   degToDir,
+  FIGURE,
   faceSegment,
   FILTER_HALF,
   LENS_HALF,
@@ -50,7 +51,7 @@ type Surface = {
   filterMask?: number
 }
 
-type Sensor = { piece: Extract<Piece, { type: 'receiver' | 'tube' }>; c: Vec2; r: number }
+type Sensor = { piece: Extract<Piece, { type: 'receiver' | 'tube' | 'scientist' }>; c: Vec2; r: number }
 
 type Ray = {
   x: number
@@ -172,6 +173,9 @@ function buildScene(level: LevelDef, pieces: Piece[]) {
         sensors.push({ piece: p, c: toBoard(p, -L + TUBE.sensorR + 4, 0), r: TUBE.sensorR })
         break
       }
+      case 'scientist':
+        sensors.push({ piece: p, c: { x: p.x, y: p.y }, r: FIGURE.r })
+        break
       case 'laser':
         break
     }
@@ -209,6 +213,7 @@ export function trace(level: LevelDef, pieces: Piece[] = level.pieces): TraceRes
   const { surfaces, sensors } = buildScene(level, pieces)
   const segments: BeamSegment[] = []
   const lit = new Map<string, number>()
+  const zapped = new Set<string>()
   const hits = new Set<string>()
   const queue: Ray[] = []
 
@@ -266,7 +271,8 @@ export function trace(level: LevelDef, pieces: Piece[] = level.pieces): TraceRes
     if (sensor) {
       const p = sensor.piece
       hits.add(p.id)
-      if (!p.color || COLOR_BITS[p.color] === ray.mask) lit.set(p.id, Math.max(lit.get(p.id) ?? 0, d1))
+      if (p.type === 'scientist') zapped.add(p.id)
+      else if (!p.color || COLOR_BITS[p.color] === ray.mask) lit.set(p.id, Math.max(lit.get(p.id) ?? 0, d1))
       continue
     }
     if (!hit) continue
@@ -383,7 +389,7 @@ export function trace(level: LevelDef, pieces: Piece[] = level.pieces): TraceRes
     }
   }
 
-  return { segments, lit, hits }
+  return { segments, lit, hits, zapped }
 }
 
 export function receivers(pieces: Piece[]) {
@@ -394,6 +400,7 @@ export function isSolved(pieces: Piece[], result: TraceResult): boolean {
   const goals = receivers(pieces)
   return (
     goals.length > 0 &&
+    result.zapped.size === 0 &&
     goals.every((r) => result.lit.has(r.id)) &&
     pieces.every((p) => !p.mustHit || result.hits.has(p.id))
   )

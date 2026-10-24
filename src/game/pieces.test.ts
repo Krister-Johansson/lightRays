@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyPlacements } from './levelTools'
 import { LEVELS } from './levels'
-import { collides, footprint, polygonsOverlap } from './pieces'
+import { collides, distanceToSegment, FIGURE, figurePosition, footprint, polygonsOverlap } from './pieces'
 import { PieceSchema } from './schema'
 
 const piece = (p: Record<string, unknown>) => PieceSchema.parse({ id: 'x', x: 0, y: 0, ...p })
@@ -40,4 +40,16 @@ describe('collisions', () => {
       }
     })
   }
+
+  it('a walking figure paces out along its angle, pauses and comes back', () => {
+    const f = piece({ type: 'scientist', x: 100, y: 100, angle: 0, walk: 68 })
+    if (f.type !== 'scientist') throw new Error()
+    const leg = 68 / FIGURE.speed
+    expect(figurePosition(f, 0).x).toBeCloseTo(100)
+    expect(figurePosition(f, leg / 2).x).toBeCloseTo(134)
+    expect(figurePosition(f, leg + FIGURE.pause / 2).x).toBeCloseTo(168)
+    expect(figurePosition(f, leg + FIGURE.pause + leg / 2)).toMatchObject({ dir: -1 })
+    expect(figurePosition(f, 2 * (leg + FIGURE.pause)).x).toBeCloseTo(100)
+    expect(distanceToSegment(0, 10, { x1: -5, y1: 0, x2: 5, y2: 0 })).toBeCloseTo(10)
+  })
 })

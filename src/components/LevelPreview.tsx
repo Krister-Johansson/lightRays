@@ -11,12 +11,12 @@ export function LevelPreview({ level, className }: { level: LevelDef; className?
       aria-label={`Preview of ${level.name}`}
     >
       <defs>
-        <pattern id="pv-dots" width="40" height="40" patternUnits="userSpaceOnUse">
-          <circle cx="20" cy="20" r="2.5" fill="#262A2F" />
+        <pattern id="pv-tiles" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M0 0.5 H40 M0.5 0 V40" stroke="#3A3D41" strokeWidth="2" />
         </pattern>
       </defs>
-      <rect width={level.width} height={level.height} fill="#15171A" />
-      <rect width={level.width} height={level.height} fill="url(#pv-dots)" />
+      <rect width={level.width} height={level.height} fill="#474B4F" />
+      <rect width={level.width} height={level.height} fill="url(#pv-tiles)" />
       {level.pieces.map((p) => (
         <PreviewPiece key={p.id} p={p} />
       ))}
@@ -42,6 +42,13 @@ function PreviewPiece({ p }: { p: Piece }) {
     case 'rhomboid':
     case 'wedge':
       return <polygon points={pts(poly!)} fill="#9CCFFF" fillOpacity="0.15" stroke="#6E8CA8" strokeWidth="3" />
+    case 'scientist':
+      return (
+        <g fill="#121314" stroke="#F4F4F2" strokeWidth="3">
+          <circle cx={p.x} cy={p.y - 24} r="9" />
+          <path d={`M${p.x - 13} ${p.y + 14} V${p.y - 2} a13 13 0 0 1 26 0 V${p.y + 14} Z`} />
+        </g>
+      )
     case 'laser':
       return <circle cx={p.x} cy={p.y} r="16" fill={colorHex(p.color)} />
     case 'receiver':

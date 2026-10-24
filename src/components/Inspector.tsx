@@ -44,21 +44,7 @@ export function Inspector({ snap, game, meta, onMeta }: Props) {
       </div>
       <p className="m-0 -mt-2 text-sm text-muted">{info.blurb}.</p>
 
-      <LockPicker piece={p} onPick={(lock) => set({ lock, rotate: playerCanRotate(p) })} />
-
-      {info.rotatable && (
-        <Toggle label="Player can rotate" detail="Shows the dial in play" checked={playerCanRotate(p)} onChange={(v) => set({ rotate: v })} />
-      )}
-      {resizable(p) && (
-        <Toggle label="Player can resize" detail="Shows the size handles in play" checked={playerCanResize(p)} onChange={(v) => set({ resize: v || undefined })} />
-      )}
-
-      <Toggle
-        label="Must be hit"
-        detail="Level isn't solved until a beam touches it"
-        checked={!!p.mustHit}
-        onChange={(v) => set({ mustHit: v || undefined })}
-      />
+      {p.type !== 'scientist' && <PlayerRules piece={p} rotatable={info.rotatable} set={set} />}
 
       <ColorField piece={p} onChange={(color) => set({ color } as Partial<Piece>)} />
 
@@ -70,6 +56,27 @@ export function Inspector({ snap, game, meta, onMeta }: Props) {
         <Trash2 className="size-4" aria-hidden /> Remove piece
       </Button>
     </div>
+  )
+}
+
+/** Who places the piece, what the player may do with it, and whether a beam must touch it. */
+function PlayerRules({ piece, rotatable, set }: { piece: Piece; rotatable: boolean; set: (patch: Partial<Piece>) => void }) {
+  return (
+    <>
+      <LockPicker piece={piece} onPick={(lock) => set({ lock, rotate: playerCanRotate(piece) })} />
+      {rotatable && (
+        <Toggle label="Player can rotate" detail="Shows the dial in play" checked={playerCanRotate(piece)} onChange={(v) => set({ rotate: v })} />
+      )}
+      {resizable(piece) && (
+        <Toggle label="Player can resize" detail="Shows the size handles in play" checked={playerCanResize(piece)} onChange={(v) => set({ resize: v || undefined })} />
+      )}
+      <Toggle
+        label="Must be hit"
+        detail="Level isn't solved until a beam touches it"
+        checked={!!piece.mustHit}
+        onChange={(v) => set({ mustHit: v || undefined })}
+      />
+    </>
   )
 }
 
@@ -140,13 +147,14 @@ const NUMBER_FIELDS: Partial<Record<PieceType, NumberSpec[]>> = {
   'concave-lens': FOCAL,
   grating: [{ key: 'spread', label: 'Spread °', step: 1, min: 5, max: 80 }],
   tube: [{ key: 'cone', label: 'Cone ±°', step: 1, min: 1, max: 45 }],
+  scientist: [{ key: 'walk', label: 'Walk px', step: 10, min: 0, max: 800 }],
 }
 
 function NumberFields({ piece, rotatable, set }: { piece: Piece; rotatable: boolean; set: (patch: Partial<Piece>) => void }) {
   const values = piece as unknown as Record<string, number>
   return (
     <div className="grid grid-cols-2 gap-3">
-      {rotatable && <NumberField label="Angle °" value={piece.angle} step={1} onChange={(v) => set({ angle: ((v % 360) + 360) % 360 })} />}
+      {rotatable && <NumberField label={piece.type === 'scientist' ? 'Walks toward °' : 'Angle °'} value={piece.angle} step={1} onChange={(v) => set({ angle: ((v % 360) + 360) % 360 })} />}
       {canScale(piece) && (
         <NumberField label="Size ×" value={scaleOf(piece)} step={0.1} min={0.5} max={3} onChange={(v) => set({ scale: v === 1 ? undefined : v })} />
       )}

@@ -1530,6 +1530,73 @@
               "type"
             ],
             "description": "Turns polarisation 90°"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "angle": {
+                "default": 0,
+                "description": "Degrees; for mirrors this is the direction the shiny face points",
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              "lock": {
+                "default": "fixed",
+                "description": "fixed: part of the table. rotate: player can turn it. kit: starts in the tray, player places and turns it",
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "rotate",
+                  "kit"
+                ]
+              },
+              "mustHit": {
+                "description": "A beam must touch this piece for the level to count as solved",
+                "type": "boolean"
+              },
+              "rotate": {
+                "description": "Player can turn it. Left out: true for \"rotate\" and \"kit\" pieces, false for \"fixed\"",
+                "type": "boolean"
+              },
+              "resize": {
+                "description": "Player can resize it in play. Left out: false",
+                "type": "boolean"
+              },
+              "scale": {
+                "description": "Size multiplier for optics (mirror length, prism size...). 1 when left out",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 3
+              },
+              "type": {
+                "type": "string",
+                "const": "scientist"
+              },
+              "walk": {
+                "default": 0,
+                "type": "number",
+                "minimum": 0,
+                "maximum": 800
+              }
+            },
+            "required": [
+              "id",
+              "x",
+              "y",
+              "type"
+            ],
+            "description": "Test figure. The test fails if any beam touches it. Paces `walk` px along its angle and back"
           }
         ]
       }

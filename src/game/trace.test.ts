@@ -155,4 +155,16 @@ describe('trace', () => {
     expect(trace(board([laser(), mirror, R])).lit.has('R')).toBe(false)
     expect(trace(board([laser(), { ...mirror, scale: 2 }, R])).hits.has('M')).toBe(true)
   })
+
+  it('a beam touching a test figure zaps it and the level cannot be solved', () => {
+    const fig = { id: 'F', type: 'scientist', x: 400, y: 300 }
+    const R = { id: 'R', type: 'receiver', x: 900, y: 300 }
+    const zapped = trace(board([laser(), fig, R]))
+    expect(zapped.zapped.has('F')).toBe(true)
+    expect(zapped.lit.has('R')).toBe(false)
+    const safe = board([laser(), { ...fig, y: 360 }, R])
+    const r = trace(safe)
+    expect(r.zapped.size).toBe(0)
+    expect(isSolved(safe.pieces, r)).toBe(true)
+  })
 })

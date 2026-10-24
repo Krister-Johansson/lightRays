@@ -1,8 +1,10 @@
 import * as THREE from 'three'
-import { ribbon } from './geometry'
+import { FigureView } from './figure'
+import { dashedCircle, ribbon } from './geometry'
 import {
   colorHex,
   concaveLocal,
+  FIGURE,
   FILTER_HALF,
   halfSize,
   LENS_HALF,
@@ -38,6 +40,10 @@ export const PALETTE = {
   receiverCore: '#2A2617',
   glass: '#9CCFFF',
   glassEdge: '#6E8CA8',
+  // Light test-chamber housings for lasers and receivers.
+  housing: '#D3D6D2',
+  housingTop: '#DDDFDB',
+  housingEdge: '#9EA29E',
 }
 
 export type PieceView = {
@@ -49,6 +55,8 @@ export type PieceView = {
   /** Selection / hover ring. */
   base: THREE.Mesh
   mustRing?: { dashed: THREE.Mesh; solid: THREE.Mesh }
+  /** Test figure and its dashed hit ring, which turns red when a beam gets close. */
+  figure?: { view: FigureView; ring: THREE.MeshBasicMaterial }
   sensor?: { ring: THREE.MeshBasicMaterial; core: THREE.MeshBasicMaterial; halo: THREE.Mesh; pulse: THREE.Mesh; burst: THREE.Mesh; color: THREE.Color }
 }
 
@@ -147,11 +155,11 @@ function buildSensor(p: Extract<Piece, { type: 'receiver' | 'tube' }>, pivot: TH
   g.position.x = cx
   if (p.type === 'receiver') {
     // Light metal housing like the laser, so goals read clearly on the dark board.
-    const housing = new THREE.Mesh(new THREE.CylinderGeometry(r * S, r * S * 1.08, 0.16, 48), std('#4A5059', { roughness: 0.45, metalness: 0.5 }))
+    const housing = new THREE.Mesh(new THREE.CylinderGeometry(r * S, r * S * 1.08, 0.16, 48), std(PALETTE.housing, { roughness: 0.6, metalness: 0.1 }))
     housing.position.y = 0.08
     housing.castShadow = true
     g.add(housing)
-    g.add(flat(new THREE.RingGeometry(r * S, (r + 1.5) * S, 48), new THREE.MeshBasicMaterial({ color: '#7A818B' }), 0.1605))
+    g.add(flat(new THREE.RingGeometry(r * S, (r + 1.5) * S, 48), new THREE.MeshBasicMaterial({ color: PALETTE.housingEdge }), 0.1605))
   }
   const top = p.type === 'tube' ? 0.03 : 0.161
   const ring = new THREE.MeshBasicMaterial({ color: tint.clone().multiplyScalar(SENSOR_IDLE.ring) })
@@ -189,12 +197,12 @@ export function buildPieceView(p: Piece): PieceView {
     case 'laser': {
       // Light metal body with a glowing colour stripe and aperture, so it reads on the dark board.
       const c = new THREE.Color(colorHex(p.color))
-      const body = box(54 * S, 0.2, 40 * S, std('#4A5059', { roughness: 0.45, metalness: 0.5 }), -29 * S)
-      body.add(edges(body.geometry, '#6E757F'))
+      const body = box(54 * S, 0.2, 40 * S, std(PALETTE.housing, { roughness: 0.6, metalness: 0.1 }), -29 * S)
+      body.add(edges(body.geometry, PALETTE.housingEdge))
       pivot.add(body)
-      pivot.add(box(46 * S, 0.02, 30 * S, std('#5A616B', { roughness: 0.4, metalness: 0.5 }), -29 * S, 0.21))
+      pivot.add(box(46 * S, 0.02, 30 * S, std(PALETTE.housingTop, { roughness: 0.6, metalness: 0.1 }), -29 * S, 0.21))
       pivot.add(box(40 * S, 0.012, 6 * S, new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(1.6) }), -29 * S, 0.226))
-      pivot.add(box(10 * S, 0.14, 20 * S, std('#6E757F', { metalness: 0.6, roughness: 0.35 }), -1 * S, 0.07))
+      pivot.add(box(10 * S, 0.14, 20 * S, std('#2B2D30', { metalness: 0.4, roughness: 0.5 }), -1 * S, 0.07))
       const aperture = flat(new THREE.CircleGeometry(5 * S, 24), new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(2.4) }), BEAM_Y)
       aperture.rotation.set(0, Math.PI / 2, 0)
       aperture.position.x = 4.1 * S
@@ -329,16 +337,35 @@ export function buildPieceView(p: Piece): PieceView {
     case 'receiver':
       buildSensor(p, pivot, view)
       break
+    case 'scientist': {
+      // The figure stands upright facing the camera, so it lives on the root, not the rotating pivot.
+      const fig = new FigureView()
+      const ringMat = new THREE.MeshBasicMaterial({ color: '#F4F4F2', transparent: true, opacity: 0.5, depthWrite: false })
+      const ring = flat(dashedCircle(FIGURE.r * S, 1.5 * S, 3.2 * S, 3.2 * S), ringMat, 0.006)
+      ring.name = 'hit-ring'
+      fig.group.add(ring)
+      root.add(fig.group)
+      view.figure = { view: fig, ring: ringMat }
+      if (p.walk > 0) {
+        // Walkway: dashed orange line along the angle with a mark at each end.
+        const pts: THREE.Vector2[] = []
+        for (let d = 0; d < p.walk; d += 10) pts.push(new THREE.Vector2(d * S, 0), new THREE.Vector2(Math.min(p.walk, d + 5.6) * S, 0))
+        const orange = new THREE.MeshBasicMaterial({ color: '#FF8A1F', transparent: true, opacity: 0.6, depthWrite: false })
+        pivot.add(flat(ribbon(pts, 2 * S, { pairs: true }), orange, 0.005))
+        for (const x of [0, p.walk]) pivot.add(flat(new THREE.PlaneGeometry(4 * S, 16 * S), orange, 0.005).translateX(x * S))
+      }
+      break
+    }
     case 'tube': {
       const L = TUBE.length * S
       const W = TUBE.width * S
-      const mat = std('#4A5059', { roughness: 0.45, metalness: 0.5 })
+      const mat = std(PALETTE.housing, { roughness: 0.6, metalness: 0.1 })
       const walls = [
         box(6 * S, 0.14, W, mat, -L / 2 + 3 * S),
         box(L, 0.14, 6 * S, mat, 0, 0.07, -W / 2 + 3 * S),
         box(L, 0.14, 6 * S, mat, 0, 0.07, W / 2 - 3 * S),
       ]
-      for (const w of walls) w.add(edges(w.geometry, '#6E757F'))
+      for (const w of walls) w.add(edges(w.geometry, PALETTE.housingEdge))
       pivot.add(...walls)
       // Coloured lips on the mouth show which way the tube faces.
       const lip = new THREE.MeshBasicMaterial({ color: new THREE.Color(p.color ? colorHex(p.color) : PALETTE.amber).multiplyScalar(0.9) })
@@ -349,7 +376,7 @@ export function buildPieceView(p: Piece): PieceView {
   }
 
   // Lock badges: a screwed plate for fixed optics, a pin for rotate-only.
-  const optic = !['laser', 'receiver', 'wall', 'tube', 'glass', 'gate'].includes(p.type)
+  const optic = !['laser', 'receiver', 'wall', 'tube', 'glass', 'gate', 'scientist'].includes(p.type)
   if (optic && p.lock !== 'kit' && !playerCanRotate(p) && !playerCanResize(p)) {
     const plate = box(72 * S, 0.02, 72 * S, std(PALETTE.plate, { roughness: 0.7 }), 0, 0.01)
     plate.castShadow = false

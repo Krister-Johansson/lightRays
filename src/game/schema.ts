@@ -69,6 +69,9 @@ export const PieceSchema = z.discriminatedUnion('type', [
     .object({ ...base, type: z.literal('polariser'), axis: z.enum(['vertical', 'horizontal']).default('vertical') })
     .describe('Polarises light; blocks light polarised the other way'),
   z.object({ ...base, type: z.literal('waveplate') }).describe('Turns polarisation 90°'),
+  z
+    .object({ ...base, type: z.literal('scientist'), walk: z.number().min(0).max(800).default(0) })
+    .describe('Test figure. The test fails if any beam touches it. Paces `walk` px along its angle and back'),
 ])
 
 export type Piece = z.infer<typeof PieceSchema>

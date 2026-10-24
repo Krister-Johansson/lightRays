@@ -82,6 +82,14 @@ const GLYPHS: Record<PieceType, (c: string) => ReactNode> = {
       <line x1="14" y1="6" x2="14" y2="22" stroke="#E6E8EB" strokeWidth="1.2" />
     </>
   ),
+  scientist: () => (
+    <g stroke="#F4F4F2" strokeWidth="1.2" fill="#121314">
+      <circle cx="14" cy="6.5" r="3.6" />
+      <path d="M8.5 19 V12.5 A5.5 5.5 0 0 1 19.5 12.5 V19 Z" />
+      <rect x="9.5" y="19" width="3.5" height="6" />
+      <rect x="15" y="19" width="3.5" height="6" />
+    </g>
+  ),
   waveplate: () => <rect x="11.5" y="4" width="5" height="20" rx="1.5" fill="#C58BFF" fillOpacity="0.45" stroke="#B07EE6" />,
 }
 

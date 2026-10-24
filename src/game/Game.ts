@@ -3,14 +3,17 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { dashedCircle, dotGridTexture, ribbon } from './geometry'
+import { dashedCircle, floorTileTexture, ribbon } from './geometry'
 import { BEAM_Y, buildPieceView, disposeObject, PALETTE, type PieceView, S, SENSOR_IDLE } from './pieceMeshes'
-import { baseSpan, collides, COLOR_HEX, isSized, PIECE_INFO, playerCanResize, playerCanRotate, resizable, scaleOf, toBoard } from './pieces'
+import { FigureView } from './figure'
+import { baseSpan, collides, distanceToSegment, FIGURE, figurePosition, COLOR_HEX, isSized, PIECE_INFO, playerCanResize, playerCanRotate, resizable, scaleOf, toBoard } from './pieces'
 import { type LevelDef, type Piece, PieceSchema, type PieceType } from './schema'
 import { isSolved, receivers, trace } from './trace'
 import type { TraceResult } from './types'
 
 const DOT_CELL = 40
+/** Thickness of the chamber wall panels around the board, in board px. */
+const WALL = 18
 const SNAP = 10
 const BACKGROUND = '#0C0D0F'
 
@@ -38,6 +41,10 @@ export type GameSnapshot = {
   dial: { x: number; y: number; deg: string } | null
   /** Camera zoom, 1 = whole board fits. */
   zoom: number
+  /** A beam touched a test figure (play mode); the chamber must be reset. */
+  failed: boolean
+  /** The zap animation has played out, so the reset card can show. */
+  gameOver: boolean
 }
 
 /** Rotation step for a handle at the given distance, per the design. */
@@ -123,6 +130,9 @@ export class Game {
   /** Seconds into the unlock sequence; Infinity when it isn't playing. */
   private unlockT = Infinity
   private surge = 0
+  // Test figures: seconds of walking so far, and whether one got zapped.
+  private clock = 0
+  private failed = false
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -194,6 +204,8 @@ export class Game {
     this.litAmount.clear()
     this.pulses.clear()
     this.solved = this.unlocked = false
+    this.clock = 0
+    this.failed = false
     this.unlockT = Infinity
     this.surge = 0
     if (!sameBoard) {
@@ -435,7 +447,8 @@ export class Game {
     // Schema defaults fill in every type-specific field (colour, size, focal length...).
     const piece = PieceSchema.parse({ ...base, type })
     // Optics start out turnable by the player; sources, goals and walls stay put.
-    if (!['laser', 'receiver', 'tube', 'wall'].includes(type) && PIECE_INFO[type].rotatable) piece.rotate = true
+    if (!['laser', 'receiver', 'tube', 'wall', 'scientist'].includes(type) && PIECE_INFO[type].rotatable) piece.rotate = true
+    if (piece.type === 'scientist') piece.walk = 120
     if (piece.type === 'wall') piece.h = 120
     return piece
   }
@@ -495,18 +508,39 @@ export class Game {
     this.boardGroup.clear()
     const { width: W, height: H } = this.level
     const frame = new THREE.Mesh(
-      new THREE.BoxGeometry((W + 24) * S, 0.12, (H + 24) * S),
-      new THREE.MeshStandardMaterial({ color: '#101214', roughness: 0.95 }),
+      new THREE.BoxGeometry((W + 2 * WALL) * S, 0.12, (H + 2 * WALL) * S),
+      new THREE.MeshStandardMaterial({ color: '#2A2C2F', roughness: 0.95 }),
     )
     frame.position.y = -0.065
     frame.receiveShadow = true
-    const tex = dotGridTexture(DOT_CELL, 1.3, '#131518', '#262A2F')
-    tex.repeat.set(W / DOT_CELL, H / DOT_CELL)
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(W * S, H * S), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }))
+    const tex = floorTileTexture()
+    tex.repeat.set(W / (DOT_CELL * 2), H / (DOT_CELL * 2))
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(W * S, H * S), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }))
     board.rotation.x = -Math.PI / 2
     board.receiveShadow = true
     this.boardGroup.add(frame, board)
+
+    // White test-chamber wall panels around the floor, with a thin seam between panels.
+    const panel = new THREE.MeshStandardMaterial({ color: '#D6D9D5', roughness: 0.85 })
+    const addRun = (length: number, along: 'x' | 'z', fixed: number) => {
+      const count = Math.max(1, Math.round(length / 80))
+      const step = length / count
+      for (let i = 0; i < count; i++) {
+        const geo = along === 'x' ? new THREE.BoxGeometry((step - 2) * S, 0.34, WALL * S) : new THREE.BoxGeometry(WALL * S, 0.34, (step - 2) * S)
+        const m = new THREE.Mesh(geo, panel)
+        const c = (-length / 2 + step * (i + 0.5)) * S
+        if (along === 'x') m.position.set(c, 0.17, fixed)
+        else m.position.set(fixed, 0.17, c)
+        m.castShadow = m.receiveShadow = true
+        this.boardGroup.add(m)
+      }
+    }
+    addRun(W + 2 * WALL, 'x', (-H / 2 - WALL / 2) * S)
+    addRun(W + 2 * WALL, 'x', (H / 2 + WALL / 2) * S)
+    addRun(H, 'z', (-W / 2 - WALL / 2) * S)
+    addRun(H, 'z', (W / 2 + WALL / 2) * S)
   }
+
 
   /** Creates, rebuilds or moves each piece's 3D view to match state. */
   private syncViews() {
@@ -595,10 +629,21 @@ export class Game {
   // ----------------------------------------------------------------- update
 
   /** Re-traces the beams and syncs every scene object and the snapshot to state. */
+  /** Pieces as the light sees them right now: walking figures at their current spot. */
+  private livePieces(): Piece[] {
+    return this.pieces.map((p) => (p.type === 'scientist' && p.walk > 0 ? { ...p, ...figurePosition(p, this.clock) } : p))
+  }
+
   private update() {
     this.syncViews()
-    this.result = trace(this.level, this.pieces)
-    const solved = this.mode === 'play' && isSolved(this.pieces, this.result) && this.tray.every((p) => !p.mustHit)
+    this.result = trace(this.level, this.livePieces())
+    if (this.mode === 'play' && this.result.zapped.size && !this.failed) {
+      // Any touch fails the test, even mid-rotation. Freeze input and play the zap.
+      this.failed = true
+      this.drag = null
+      for (const id of this.result.zapped) this.views.get(id)?.view.figure?.view.die(prefersReducedMotion())
+    }
+    const solved = this.mode === 'play' && !this.failed && isSolved(this.pieces, this.result) && this.tray.every((p) => !p.mustHit)
     if (solved && !this.solved) {
       this.unlockT = 0
       this.unlocked = false
@@ -778,6 +823,8 @@ export class Game {
       moves: this.moves,
       dial,
       zoom: this.zoom,
+      failed: this.failed,
+      gameOver: this.failed && [...this.views.values()].some((v) => v.view.figure?.view.deathDone),
     }
     this.listeners.forEach((fn) => fn())
   }
@@ -910,7 +957,44 @@ export class Game {
       }
     }
 
+    busy = this.animateFigures(dt, reduced) || busy
     busy = this.animateUnlock(dt, reduced) || busy
+    return busy
+  }
+
+  /** Walks the test figures, sets their mood from nearby beams, and re-traces when one steps into light. */
+  private animateFigures(dt: number, reduced: boolean) {
+    const figures = this.pieces.filter((p) => p.type === 'scientist')
+    if (!figures.length) return false
+    let busy = false
+    const walking = figures.some((f) => f.walk > 0)
+    if (walking && !this.failed && !this.drag) this.clock += dt
+    let retrace = false
+    const live = new Map(this.livePieces().map((p) => [p.id, p]))
+    for (const f of figures) {
+      const entry = this.views.get(f.id)
+      const fig = entry?.view.figure
+      if (!fig) continue
+      const at = live.get(f.id)!
+      // The foot sits a little below the hit point so the torso covers it from the camera.
+      const offset = this.toWorld(at.x, at.y).sub(this.toWorld(f.x, f.y))
+      fig.view.group.position.set(offset.x, 0, offset.z + FigureView.torsoOffset)
+      fig.view.group.getObjectByName('hit-ring')?.position.set(0, 0.006, -FigureView.torsoOffset)
+      let near = Infinity
+      for (const s of this.result.segments) near = Math.min(near, distanceToSegment(at.x, at.y, s))
+      const zapped = this.result.zapped.has(f.id)
+      // Light moves through the figure's spot: trace again so the beam stops on it (or passes on).
+      if ((near < FIGURE.r && !zapped) || (zapped && walking && !this.failed)) retrace = true
+      const mood = zapped ? 'hit' : this.solved && !this.failed ? 'cheer' : near < FIGURE.nervous ? 'worried' : 'idle'
+      fig.ring.color.set(mood === 'worried' || mood === 'hit' ? '#FF3B30' : '#F4F4F2')
+      fig.ring.opacity = mood === 'worried' || mood === 'hit' ? 0.9 : 0.5
+      const moving = f.walk > 0 && !this.failed && !this.drag && (this.clock % (2 * (f.walk / FIGURE.speed + FIGURE.pause))) % (f.walk / FIGURE.speed + FIGURE.pause) < f.walk / FIGURE.speed
+      const wasDone = fig.view.deathDone
+      busy = fig.view.update(dt, mood, moving, reduced) || busy
+      if (fig.view.deathDone !== wasDone) this.emit()
+    }
+    if (walking && !this.failed) busy = true
+    if (retrace) this.update()
     return busy
   }
 
@@ -1016,6 +1100,7 @@ export class Game {
   }
 
   private onPointerDown = (e: PointerEvent) => {
+    if (this.failed) return
     const el = this.renderer.domElement
     // Middle or right drag pans from anywhere.
     if (e.button === 1 || e.button === 2) {
@@ -1190,6 +1275,7 @@ export class Game {
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return
+    if (this.failed) return
     if (e.key === 'Shift' && this.drag?.kind === 'rotate') {
       this.shift = true
       this.emit()

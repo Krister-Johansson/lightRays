@@ -30,6 +30,9 @@ npm run lint     # oxlint
 - Light the receiver: a pulse of light runs down the beam, the receiver bursts and the
   **Finish round** button unlocks (or press Enter) to move on. Mirrors outlined with an amber diamond must be part of the beam's path.
   Mirrors on a screwed plate are fixed.
+- Test figures pace their dashed walkway and get nervous (orange !) when a beam passes close.
+  If any beam touches one, even while you're turning a mirror, it falls apart and the test
+  fails: press **Reset chamber** (or Enter) to try again. Shield them with mirrors or walls.
 
 ## Pieces
 
@@ -56,6 +59,7 @@ npm run lint     # oxlint
 | Colour gate | Only beams made purely of its colour pass. Resizable. |
 | Polariser | Polarises light (vertical or horizontal) and blocks the other polarisation. |
 | Wave plate | Turns polarisation 90°. |
+| Test figure | Must never be touched by a beam. Paces `walk` px along its angle and back. |
 
 ## Camera
 
@@ -85,6 +89,7 @@ autosaves in your browser.
 | `src/game/schema.ts` | zod schema: `parseLevel` (import/validate) and `serializeLevel` (export). |
 | `src/game/levels.ts` | Loads every level file, validates it and sorts by id. |
 | `src/game/levels.test.ts` | Proves every level is solvable and not pre-solved. |
+| `src/game/figure.ts` | Test figure standee: walk, moods and the zap sequence. |
 | `src/game/Game.ts` | three.js scene, bloom, dial, drag/place/resize, play and edit modes. |
 | `src/screens/` | Menu, level select, play and sandbox screens (hash routes `#/`, `#/levels`, `#/play/1-1`, `#/sandbox`). |
 | `src/components/` | HUD, dial readout, kit tray, finish button, palette, inspector, previews. |
@@ -101,13 +106,14 @@ a `type`, centre `x`/`y`, `angle` (degrees, counter-clockwise), an optional `sca
 whether the player may turn or resize it (an older `lock: "rotate"` still means fixed but turnable).
 Pieces can't overlap: dragging, placing and resizing stop at the last free spot. An optional `solution` stores the
 solved placement of each movable piece. `npm test` validates every file and proves the level
-can be solved and isn't solved at the start. Files point at `level.schema.json`, so editors like
+can be solved and isn't solved at the start, with every test figure safe along its whole walkway. Files point at `level.schema.json`, so editors like
 VS Code autocomplete and flag mistakes. After changing `src/game/schema.ts`, regenerate it with
 `npm run levels:schema`.
 
 ## Design
 
-Follows the approved LightRays design canvas: dark matte board, glowing beams, slightly tilted
+Follows the approved LightRays design canvas, in a test-chamber look (tiled floor, white wall
+panels, light housings) with pictogram test figures from the approved figures mockup: dark matte board, glowing beams, slightly tilted
 camera, no sidebar while playing, rotation dial with angle readout.
 
 ## Claude skills
